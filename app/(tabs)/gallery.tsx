@@ -24,6 +24,7 @@ import {
   Users,
   Camera,
   Sparkles,
+  Plus,
   ChevronDown,
   ChevronUp,
   Award,
@@ -363,6 +364,10 @@ export default function GalleryScreen() {
     useState<ActionItem | null>(null);
   const [isImagePreviewVisible, setIsImagePreviewVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [isManualBucketModalVisible, setIsManualBucketModalVisible] =
+    useState(false);
+  const [manualBucketTitle, setManualBucketTitle] = useState("");
+  const [manualBucketDescription, setManualBucketDescription] = useState("");
 
   const mapEventsToTabs = (data: any[]) => {
     const planned: ActionItem[] = [];
@@ -665,6 +670,42 @@ export default function GalleryScreen() {
     }
   };
 
+  const handleAddManualBucket = async () => {
+    if (!userId || isSavingAction) return;
+
+    const title = manualBucketTitle.trim();
+    const description = manualBucketDescription.trim();
+    if (!title) {
+      Alert.alert("Missing title", "Add a bucket title first.");
+      return;
+    }
+
+    try {
+      setIsSavingAction(true);
+      const { error } = await supabase.from("events").insert({
+        user_id: userId,
+        title,
+        status_text: description || "Planned",
+        participants: 1,
+        is_active: false,
+        completed: false,
+      });
+
+      if (error) throw error;
+
+      await fetchEvents(userId);
+      setManualBucketTitle("");
+      setManualBucketDescription("");
+      setIsManualBucketModalVisible(false);
+      setActiveTab("Planned");
+    } catch (err) {
+      console.error("Failed to add manual bucket:", err);
+      Alert.alert("Could not add bucket", "Please try again.");
+    } finally {
+      setIsSavingAction(false);
+    }
+  };
+
   const getActiveData = () => {
     switch (activeTab) {
       case "Planned":
@@ -709,7 +750,7 @@ export default function GalleryScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>OVERVIEW</Text>
-          <Text style={styles.headerTitle}>Buckets</Text>
+          <Text style={styles.headerTitle}>Bucket List</Text>
         </View>
 
         <View style={styles.tabBar}>
@@ -756,6 +797,16 @@ export default function GalleryScreen() {
         />
 
         {/* Concierge Bubble */}
+        {activeTab === "Planned" && !isConciergeOpen && (
+          <TouchableOpacity
+            style={styles.addBucketFab}
+            onPress={() => setIsManualBucketModalVisible(true)}
+            activeOpacity={0.9}
+          >
+            <Plus color="#fff" size={22} />
+          </TouchableOpacity>
+        )}
+
         {!isConciergeOpen && (
           <TouchableOpacity
             style={styles.conciergeFab}
@@ -877,6 +928,60 @@ export default function GalleryScreen() {
         )}
 
         {/* Bucket List Picker */}
+        <Modal
+          visible={isManualBucketModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsManualBucketModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setIsManualBucketModalVisible(false)}
+          >
+            <Pressable style={styles.modalCard} onPress={() => {}}>
+              <Text style={styles.modalTitle}>Add Bucket</Text>
+              <TextInput
+                value={manualBucketTitle}
+                onChangeText={setManualBucketTitle}
+                placeholder="Bucket title"
+                placeholderTextColor={C.textLight}
+                style={styles.manualBucketInput}
+                autoFocus
+              />
+              <TextInput
+                value={manualBucketDescription}
+                onChangeText={setManualBucketDescription}
+                placeholder="Description (optional)"
+                placeholderTextColor={C.textLight}
+                style={[
+                  styles.manualBucketInput,
+                  styles.manualBucketDescriptionInput,
+                ]}
+                multiline
+              />
+              <View style={styles.manualBucketActions}>
+                <TouchableOpacity
+                  style={styles.manualBucketCancelBtn}
+                  onPress={() => setIsManualBucketModalVisible(false)}
+                >
+                  <Text style={styles.manualBucketCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.manualBucketSaveBtn}
+                  onPress={handleAddManualBucket}
+                  disabled={isSavingAction}
+                >
+                  {isSavingAction ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.manualBucketSaveText}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <Modal
           visible={isPickerOpen}
           transparent
@@ -1032,6 +1137,22 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: C.textMuted,
     letterSpacing: 0.1,
+  },
+  addBucketFab: {
+    position: "absolute",
+    right: 20,
+    bottom: 92,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: C.accentDark,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
   emptyText: {
@@ -1326,5 +1447,46 @@ const styles = StyleSheet.create({
   modalItemText: {
     color: C.textPrimary,
     fontSize: 14,
+  },
+  manualBucketInput: {
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+    color: C.textPrimary,
+  },
+  manualBucketDescriptionInput: {
+    height: 92,
+    marginTop: 10,
+    paddingTop: 12,
+    textAlignVertical: "top",
+  },
+  manualBucketActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  manualBucketCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  manualBucketCancelText: {
+    color: C.textMuted,
+    fontWeight: "700",
+  },
+  manualBucketSaveBtn: {
+    backgroundColor: C.accentDark,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minWidth: 74,
+    alignItems: "center",
+  },
+  manualBucketSaveText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });

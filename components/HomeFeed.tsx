@@ -16,6 +16,7 @@ import {
   LayoutAnimation,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -37,6 +38,7 @@ import { supabase } from "../app/lib/supabase";
 import { API_BASE_URL } from "../src/services/apiClient";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const C = {
   bg: "#f7f5f2",
@@ -64,6 +66,7 @@ interface Story {
   id: string;
   name: string;
   image: string;
+  mood?: string;
 }
 
 interface EventItem {
@@ -86,6 +89,7 @@ interface PostItem {
   locationName: string;
   caption: string;
   image: string;
+  imageUrls: string[];
   likes: number;
   tags: string[];
   category: string;
@@ -120,6 +124,101 @@ const MOCK_STORIES: Story[] = [
     image:
       "https://images.unsplash.com/photo-1526401485004-46910ecc8e51?q=80&w=200&auto=format&fit=crop",
   },
+  {
+    id: "4",
+    name: "Riley",
+    image:
+      "https://images.unsplash.com/photo-1546525848-3ce03ca516f6?q=80&w=200&auto=format&fit=crop",
+  },
+  {
+    id: "5",
+    name: "Casey",
+    image:
+      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&auto=format&fit=crop",
+  },
+  {
+    id: "6",
+    name: "Taylor",
+    image:
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop",
+  },
+  {
+    id: "7",
+    name: "Avery",
+    image:
+      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=200&auto=format&fit=crop",
+  },
+  {
+    id: "8",
+    name: "Maya",
+    image:
+      "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=200&auto=format&fit=crop",
+  },
+];
+
+const SAMPLE_STORY_POSTS: PostItem[] = [
+  {
+    id: "sample-1",
+    user: "Alex",
+    locationName: "La Jolla",
+    caption: "Morning surf and post-session coffee.",
+    image:
+      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop",
+    imageUrls: [
+      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1526401485004-2aa7f3a3f0c8?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1473116763249-2faaef81ccda?q=80&w=1200&auto=format&fit=crop",
+    ],
+    likes: 87,
+    tags: ["surf", "beach"],
+    category: "Travel",
+  },
+  {
+    id: "sample-2",
+    user: "Sam",
+    locationName: "North Park",
+    caption: "Brunch run with the crew.",
+    image:
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop",
+    imageUrls: [
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200&auto=format&fit=crop",
+    ],
+    likes: 61,
+    tags: ["food", "friends"],
+    category: "Food",
+  },
+  {
+    id: "sample-3",
+    user: "Jordan",
+    locationName: "Torrey Pines",
+    caption: "Sunset hike and golden hour.",
+    image:
+      "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=1200&auto=format&fit=crop",
+    imageUrls: [
+      "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1464823063530-08f10ed1a2dd?q=80&w=1200&auto=format&fit=crop",
+    ],
+    likes: 103,
+    tags: ["hike", "sunset"],
+    category: "Adventure",
+  },
+  {
+    id: "sample-4",
+    user: "Maya",
+    locationName: "Little Italy",
+    caption: "City walk and art walls.",
+    image:
+      "https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=1200&auto=format&fit=crop",
+    imageUrls: [
+      "https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=1200&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop",
+    ],
+    likes: 74,
+    tags: ["city", "weekend"],
+    category: "Lifestyle",
+  },
 ];
 
 const DUMMY_COMMENTS = [
@@ -139,10 +238,12 @@ export default function HomeFeed() {
   const [isPostOptionsVisible, setIsPostOptionsVisible] = useState(false);
   const [isCreateEventVisible, setIsCreateEventVisible] = useState(false);
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
+  const [isStoryViewerVisible, setIsStoryViewerVisible] = useState(false);
 
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedCommentsPost, setSelectedCommentsPost] =
     useState<PostItem | null>(null);
+  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
 
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const shareSlideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -234,17 +335,32 @@ export default function HomeFeed() {
           .order("created_at", { ascending: false });
 
         if (postsData) {
-          setDbPosts(
-            postsData.map((p) => ({
+          const mappedPosts: PostItem[] = postsData.map((p) => {
+            const imageUrls = Array.isArray(p.images)
+              ? p.images.filter((url: string) => typeof url === "string")
+              : Array.isArray(p.photos)
+                ? p.photos.filter((url: string) => typeof url === "string")
+                : p.image
+                  ? [p.image]
+                  : [];
+
+            return {
               id: p.id,
               user: p.user_name,
               locationName: p.location_name,
               caption: p.caption,
-              image: p.image,
+              image: imageUrls[0] || p.image,
+              imageUrls,
               likes: p.likes,
               tags: p.tags || [],
               category: p.category || "General",
-            })),
+            };
+          });
+
+          setDbPosts(
+            mappedPosts.length >= 6
+              ? mappedPosts
+              : [...mappedPosts, ...SAMPLE_STORY_POSTS],
           );
         }
 
@@ -342,8 +458,6 @@ export default function HomeFeed() {
         participants: participants.length,
         is_active: false,
         completed: false,
-        category: item.category || "General",
-        tags: item.tags || [],
       });
 
       router.push({
@@ -444,8 +558,6 @@ export default function HomeFeed() {
         participants: 1,
         is_active: false,
         completed: false,
-        category: item.category || "General",
-        tags: item.tags || [],
       });
 
       if (error) throw error;
@@ -495,6 +607,17 @@ export default function HomeFeed() {
     setIsCommentsVisible(true);
   };
 
+  const openStory = (story: Story) => {
+    setSelectedStory(story);
+    setIsStoryViewerVisible(true);
+  };
+
+  const storyPosts = selectedStory
+    ? dbPosts.filter(
+        (p) => p.user.toLowerCase() === selectedStory.name.toLowerCase(),
+      )
+    : [];
+
   const renderHeader = () => (
     <View>
       <View style={styles.storiesRow}>
@@ -504,12 +627,16 @@ export default function HomeFeed() {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <View style={styles.storyContainer}>
+            <TouchableOpacity
+              style={styles.storyContainer}
+              activeOpacity={0.8}
+              onPress={() => openStory(item)}
+            >
               <View style={styles.storyRing}>
                 <Image source={{ uri: item.image }} style={styles.storyImage} />
               </View>
               <Text style={styles.storyText}>{item.name}</Text>
-            </View>
+            </TouchableOpacity>
           )}
           contentContainerStyle={{ paddingHorizontal: 16 }}
         />
@@ -608,7 +735,22 @@ export default function HomeFeed() {
         <Text style={styles.cardLocation}>{item.locationName}</Text>
       </View>
 
-      <Image source={{ uri: item.image }} style={styles.cardImage} />
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        style={styles.postCarousel}
+      >
+        {(item.imageUrls?.length ? item.imageUrls : [item.image]).map(
+          (uri, idx) => (
+            <Image
+              key={`${item.id}-${idx}`}
+              source={{ uri }}
+              style={styles.postCarouselImage}
+            />
+          ),
+        )}
+      </ScrollView>
 
       <View style={styles.postActions}>
         <View style={styles.postIconsLeft}>
@@ -935,6 +1077,63 @@ export default function HomeFeed() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        <Modal visible={isStoryViewerVisible} transparent animationType="fade">
+          <Pressable
+            style={styles.storyOverlay}
+            onPress={() => setIsStoryViewerVisible(false)}
+          >
+            <Pressable
+              style={styles.storyViewerSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.storyViewerHeader}>
+                <View style={styles.storyViewerUserRow}>
+                  <Image
+                    source={{ uri: selectedStory?.image }}
+                    style={styles.storyViewerAvatar}
+                  />
+                  <Text style={styles.storyViewerName}>
+                    {selectedStory?.name || "Stories"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setIsStoryViewerVisible(false)}
+                >
+                  <Text style={styles.storyViewerClose}>Close</Text>
+                </TouchableOpacity>
+              </View>
+
+              <FlatList
+                data={storyPosts.length ? storyPosts : SAMPLE_STORY_POSTS}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <View style={styles.storyPostCard}>
+                    <Text style={styles.storyPostCaption} numberOfLines={2}>
+                      {item.caption}
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {(item.imageUrls?.length
+                        ? item.imageUrls
+                        : [item.image]
+                      ).map((uri, idx) => (
+                        <Image
+                          key={`${item.id}-story-${idx}`}
+                          source={{ uri }}
+                          style={styles.storyPostImage}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -977,6 +1176,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: C.textPrimary,
+  },
+  postCarousel: { width: "100%", backgroundColor: C.accentLight },
+  postCarouselImage: {
+    width: SCREEN_WIDTH,
+    height: 380,
+    backgroundColor: C.accentLight,
   },
   switcher: {
     flexDirection: "row",
@@ -1216,4 +1421,58 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   closeCommentsBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  storyOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  storyViewerSheet: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "85%",
+    paddingTop: 14,
+    paddingBottom: 24,
+  },
+  storyViewerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  storyViewerUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  storyViewerAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 10,
+  },
+  storyViewerName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: C.textPrimary,
+  },
+  storyViewerClose: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.accentDark,
+  },
+  storyPostCard: {
+    marginBottom: 16,
+  },
+  storyPostCaption: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    color: C.textPrimary,
+    fontWeight: "600",
+  },
+  storyPostImage: {
+    width: SCREEN_WIDTH,
+    height: 360,
+    backgroundColor: C.accentLight,
+  },
 });
