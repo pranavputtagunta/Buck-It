@@ -591,6 +591,54 @@ async def add_bucket_list_item(item: BucketListItemCreate):
 
     return db_res.data[0]
 # 2. The dynamic catch-all route stays BELOW
+
+class DiscoverEventCreate(BaseModel):
+    user_id: str
+    title: str
+    location_name: str
+    deadline: Optional[str] = None
+    image: Optional[str] = "https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=800"
+
+@router.post("/discover/add")
+async def create_discover_event(item: DiscoverEventCreate):
+    """Auto-tags a new community event and saves it to discover_events."""
+    system_instruction = f"""
+    You are an auto-tagging AI for a social bucket-list app. 
+    Categorize the user's event into exactly ONE of the main categories, and select 2-4 relevant tags. 
+    ONLY return raw JSON using the categories and tags from this strict taxonomy:
+    {TAXONOMY}
+    """
+
+    try:
+        llm_result = llm.generate_structured_response(
+            system_instruction=system_instruction,
+            user_prompt=f"Event: {item.title} at {item.location_name}",
+            response_schema=BucketTagsSchema
+        )
+        category = llm_result.get("category", "General")
+        tags = llm_result.get("tags", [])
+        if category and category not in tags:
+            tags.append(category)
+    except Exception as e:
+        print(f"❌ LLM TAGGING FAILED: {str(e)}")
+        tags = ["General"]
+
+    db_payload = {
+        "created_by": item.user_id,
+        "title": item.title,
+        "location_name": item.location_name,
+        "deadline": item.deadline,
+        "image": item.image,
+        "tags": tags,
+    }
+
+    db_res = supabase.table("discover_events").insert(db_payload).execute()
+
+    if not db_res.data:
+        raise HTTPException(status_code=500, detail="Database insert failed")
+
+    return db_res.data[0]
+
 @router.get("/{bucket_id}")
 async def get_bucket(bucket_id: str):
     try:

@@ -223,18 +223,22 @@ export default function BucketListScreen() {
       }
       setUserId(session.user.id);
 
+      // 🚨 FIX: Removed 'category' from the select statement
       const { data, error } = await supabase
         .from("bucket_list_items")
-        .select("id, title, category, tags, deadline, completed, created_at")
+        .select("id, title, tags, deadline, completed, created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
 
-      if (data) {
+      if (error) {
+        console.error("Error fetching buckets:", error.message);
+      } else if (data) {
         setGoals(
           data.map((dbItem) => ({
             id: dbItem.id,
             title: dbItem.title,
-            category: dbItem.category || "General",
+            // 🚨 FIX: Derive category from tags array to prevent UI crashing
+            category: dbItem.tags?.[0] || "General",
             tags: dbItem.tags || [],
             deadline: dbItem.deadline,
             urgency: "low",
@@ -293,7 +297,6 @@ export default function BucketListScreen() {
     const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
 
     try {
-      // ─── UPDATED TO NEW ROUTE ───
       const response = await fetch(`${apiBase}/api/buckets/list-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -311,8 +314,8 @@ export default function BucketListScreen() {
         {
           id: data.id,
           title: data.title,
-          category: data.category,
-          tags: data.tags,
+          category: data.category || data.tags?.[0] || "General",
+          tags: data.tags || [],
           deadline: data.deadline,
           urgency: urgency,
           completed: data.completed,

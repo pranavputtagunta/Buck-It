@@ -32,13 +32,12 @@ import {
   Sparkles,
 } from "lucide-react-native";
 import MapModule from "./MapModule";
+import CreateEventModal from "./CreateEventModal";
 import { supabase } from "../app/lib/supabase";
-import { bucketService } from "../src/services/bucketService";
 import { API_BASE_URL } from "../src/services/apiClient";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
   bg: "#f7f5f2",
   surface: "#ffffff",
@@ -46,7 +45,6 @@ const C = {
   borderMid: "#ddd6cc",
   textPrimary: "#1a1814",
   textMuted: "#a09890",
-  textLight: "#c0b9b0",
   accent: "#7a6e62",
   accentDark: "#3a342e",
   accentLight: "#ede9e3",
@@ -56,7 +54,42 @@ const C = {
   blue: "#318bfb",
 };
 
-// ─── Types & Mock Data ────────────────────────────────────────────────────────
+interface BucketItem {
+  id: string;
+  title: string;
+  category: string;
+}
+
+interface Story {
+  id: string;
+  name: string;
+  image: string;
+}
+
+interface EventItem {
+  id: string;
+  user: string;
+  locationName: string;
+  coords: { latitude: number; longitude: number };
+  title: string;
+  image: string;
+  deadline: string;
+  bucketItemId: string;
+  tags: string[];
+  category?: string;
+  time_slots: string[];
+}
+
+interface PostItem {
+  id: string;
+  user: string;
+  locationName: string;
+  caption: string;
+  image: string;
+  likes: number;
+  tags: string[];
+  category: string;
+}
 
 const MOCK_GOALS: BucketItem[] = [
   { id: "1", title: "Learn to Surf", category: "Health & Fitness" },
@@ -95,65 +128,18 @@ const DUMMY_COMMENTS = [
   { id: "3", user: "Maya", text: "Adding this to my weekend plans." },
 ];
 
-interface BucketItem {
-  id: string;
-  title: string;
-  category: string;
-}
-interface Story {
-  id: string;
-  name: string;
-  image: string;
-}
-interface EventItem {
-  id: string;
-  user: string;
-  locationName: string;
-  coords: { latitude: number; longitude: number };
-  title: string;
-  image: string;
-  deadline: string;
-  bucketItemId: string;
-  tags: string[];
-  time_slots: string[];
-}
-
-interface DiscoverBucketItem {
-  id?: string;
-  title?: string;
-  category?: string;
-  event_time?: string;
-  bucket_list_item_id?: string;
-  image?: string;
-  tags?: string[];
-  time_slots?: string[];
-  latitude?: number;
-  longitude?: number;
-}
-
-interface PostItem {
-  id: string;
-  user: string;
-  locationName: string;
-  caption: string;
-  image: string;
-  likes: number;
-  tags: string[];
-  category: string;
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function HomeFeed() {
   const router = useRouter();
+
   const [feedType, setFeedType] = useState<"Events" | "Posts">("Events");
   const [expandedMapId, setExpandedMapId] = useState<string | null>(null);
 
-  // Modals & Animations
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
   const [isPostOptionsVisible, setIsPostOptionsVisible] = useState(false);
+  const [isCreateEventVisible, setIsCreateEventVisible] = useState(false);
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
+
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedCommentsPost, setSelectedCommentsPost] =
     useState<PostItem | null>(null);
@@ -161,46 +147,37 @@ export default function HomeFeed() {
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const shareSlideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  // Data States
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [lockingId, setLockingId] = useState<string | null>(null);
   const [copyingPostId, setCopyingPostId] = useState<string | null>(null);
+
   const [recommendedEvents, setRecommendedEvents] = useState<EventItem[]>([]);
   const [dbPosts, setDbPosts] = useState<PostItem[]>([]);
   const [availableChats, setAvailableChats] = useState<any[]>([]);
+
   const [activeFilterIds, setActiveFilterIds] = useState<string[]>([]);
   const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
+
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
 
-  const loadDiscoverEvents = async (uid: string) => {
-    let discoverFeed: DiscoverBucketItem[] = [];
+  const loadDiscoverEvents = async () => {
+    const { data: discoverEventsData, error } = await supabase
+      .from("discover_events")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    try {
-      const generatedFeed = await bucketService.getDiscoverFeed(uid);
-      discoverFeed = Array.isArray(generatedFeed)
-        ? (generatedFeed as DiscoverBucketItem[])
-        : [];
-    } catch (error) {
-      console.warn("Generated discover feed failed, falling back:", error);
+    if (error) {
+      throw error;
     }
 
-    if (discoverFeed.length === 0) {
-      const rankedFeed = await bucketService.getDiscoverFeedRanked(uid);
-      discoverFeed = Array.isArray(rankedFeed)
-        ? (rankedFeed as DiscoverBucketItem[])
-        : [];
-    }
-
-    const rows = discoverFeed;
-
-    const formatted: EventItem[] = rows.map(
-      (ev: DiscoverBucketItem, index: number) => ({
-        id: String(ev.id ?? `discover-${index}`),
+    const formatted: EventItem[] = (discoverEventsData || []).map(
+      (ev: any) => ({
+        id: String(ev.id),
         user: "Bucket Community",
-        locationName: ev.category || "Bucket recommendation",
+        locationName: ev.location_name || "San Diego",
         coords: {
           latitude: ev.latitude || 32.7157,
           longitude: ev.longitude || -117.1611,
@@ -209,13 +186,10 @@ export default function HomeFeed() {
         image:
           ev.image ||
           "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?q=80&w=1200&auto=format&fit=crop",
-        deadline: ev.event_time
-          ? new Date(ev.event_time).toLocaleString()
-          : "Flexible timing",
-        bucketItemId: ev.bucket_list_item_id
-          ? String(ev.bucket_list_item_id)
-          : "",
+        deadline: ev.deadline || "Join anytime",
+        bucketItemId: String(ev.bucket_item_id || ""),
         tags: Array.isArray(ev.tags) ? ev.tags : [],
+        category: ev.tags?.[0] || "General",
         time_slots: Array.isArray(ev.time_slots) ? ev.time_slots : [],
       }),
     );
@@ -223,42 +197,42 @@ export default function HomeFeed() {
     setRecommendedEvents(formatted);
   };
 
-  // ─── Load User & Build Algorithm ───
   useEffect(() => {
     const buildFeed = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.user) return;
+
       const uid = session.user.id;
       setUserId(uid);
 
       try {
-        // 1. Build the Ultimate Persona Query
         const { data: profile } = await supabase
           .from("users")
-          .select("display_name, interests, personality")
+          .select("display_name")
           .eq("id", uid)
           .single();
         if (profile) setUserName(profile.display_name);
 
-        // 2. Fetch User's Chats for Sharing
         const { data: chatParts } = await supabase
           .from("chat_participants")
-          .select(`chat_id, chats ( id, title )`)
+          .select("chat_id, chats ( id, title )")
           .eq("user_id", uid);
-        if (chatParts)
-          setAvailableChats(
-            chatParts.map((p: any) =>
-              Array.isArray(p.chats) ? p.chats[0] : p.chats,
-            ),
-          );
 
-        // 3. Fetch Posts (Scrapbook)
+        if (chatParts) {
+          setAvailableChats(
+            chatParts
+              .map((p: any) => (Array.isArray(p.chats) ? p.chats[0] : p.chats))
+              .filter(Boolean),
+          );
+        }
+
         const { data: postsData } = await supabase
           .from("posts")
           .select("*")
           .order("created_at", { ascending: false });
+
         if (postsData) {
           setDbPosts(
             postsData.map((p) => ({
@@ -268,24 +242,22 @@ export default function HomeFeed() {
               caption: p.caption,
               image: p.image,
               likes: p.likes,
-              tags: p.tags,
-              category: p.category,
+              tags: p.tags || [],
+              category: p.category || "General",
             })),
           );
         }
 
-        // 4. Autopopulate Events from discover API
-        await loadDiscoverEvents(uid);
+        await loadDiscoverEvents();
       } catch (err) {
         console.error("Feed build error:", err);
       } finally {
         setIsLoadingFeed(false);
       }
     };
+
     buildFeed();
   }, []);
-
-  // ─── Handlers ───
 
   const toggleMap = (id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -319,6 +291,7 @@ export default function HomeFeed() {
       bounciness: 0,
     }).start();
   };
+
   const closeShareModal = () => {
     Animated.timing(shareSlideAnim, {
       toValue: SCREEN_HEIGHT,
@@ -333,22 +306,26 @@ export default function HomeFeed() {
   const handleLockItIn = async (item: EventItem) => {
     if (!userId || lockingId) return;
     setLockingId(item.id);
+
     try {
       const { data: chatData } = await supabase
         .from("chats")
         .insert({ title: item.title })
         .select()
         .single();
+
       const { data: randomUsers } = await supabase
         .from("users")
         .select("id")
         .neq("id", userId)
         .limit(8);
+
       const participants = [{ chat_id: chatData.id, user_id: userId }];
-      if (randomUsers)
+      if (randomUsers) {
         randomUsers.forEach((u) =>
           participants.push({ chat_id: chatData.id, user_id: u.id }),
         );
+      }
 
       await supabase.from("chat_participants").insert(participants);
       await supabase.from("chat_messages").insert({
@@ -357,6 +334,7 @@ export default function HomeFeed() {
         text: `Group created for **${item.title}**! Analyzing availability... ✨`,
         type: "ai",
       });
+
       await supabase.from("events").insert({
         user_id: userId,
         title: item.title,
@@ -364,6 +342,8 @@ export default function HomeFeed() {
         participants: participants.length,
         is_active: false,
         completed: false,
+        category: item.category || "General",
+        tags: item.tags || [],
       });
 
       router.push({
@@ -379,6 +359,7 @@ export default function HomeFeed() {
 
   const handleShareToChat = async (chatId: string) => {
     if (!selectedItem || !userId) return;
+
     try {
       const isAIGen = selectedItem.mode === "AI_GEN";
       if (!isAIGen) {
@@ -463,6 +444,8 @@ export default function HomeFeed() {
         participants: 1,
         is_active: false,
         completed: false,
+        category: item.category || "General",
+        tags: item.tags || [],
       });
 
       if (error) throw error;
@@ -480,10 +463,9 @@ export default function HomeFeed() {
   };
 
   const refreshEvents = async () => {
-    if (!userId) return;
     try {
       setIsRefreshingEvents(true);
-      await loadDiscoverEvents(userId);
+      await loadDiscoverEvents();
     } catch (err) {
       console.error("Discover refresh failed:", err);
       Alert.alert("Refresh failed", "Could not reload discover events.");
@@ -513,7 +495,50 @@ export default function HomeFeed() {
     setIsCommentsVisible(true);
   };
 
-  // ─── Renderers ───
+  const renderHeader = () => (
+    <View>
+      <View style={styles.storiesRow}>
+        <FlatList
+          data={MOCK_STORIES}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.storyContainer}>
+              <View style={styles.storyRing}>
+                <Image source={{ uri: item.image }} style={styles.storyImage} />
+              </View>
+              <Text style={styles.storyText}>{item.name}</Text>
+            </View>
+          )}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+        />
+      </View>
+
+      <View style={styles.switcher}>
+        {["Events", "Scrapbook"].map((tab) => {
+          const mapped = tab === "Scrapbook" ? "Posts" : "Events";
+          const active = feedType === mapped;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.switcherTab, active && styles.switcherTabActive]}
+              onPress={() => setFeedType(mapped as "Events" | "Posts")}
+            >
+              <Text
+                style={[
+                  styles.switcherText,
+                  active && styles.switcherTextActive,
+                ]}
+              >
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 
   const renderEvent = ({ item }: ListRenderItemInfo<EventItem>) => (
     <View style={styles.cardContainer}>
@@ -532,26 +557,35 @@ export default function HomeFeed() {
           )}
         </TouchableOpacity>
       </View>
+
       {expandedMapId === item.id && (
         <MapModule coords={item.coords} locationName={item.locationName} />
       )}
+
       <Image source={{ uri: item.image }} style={styles.cardImage} />
+
       <View style={styles.cardFooter}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <View style={styles.eventTitleRow}>
           <Text style={styles.eventTitle}>{item.title}</Text>
           <TouchableOpacity onPress={() => openShareModal(item)} hitSlop={10}>
             <Send color={C.textPrimary} size={20} />
           </TouchableOpacity>
         </View>
+
+        {item.tags.length > 0 && (
+          <View style={styles.tagContainer}>
+            {item.tags.map((tag, idx) => (
+              <View key={`${item.id}-${idx}`} style={styles.tagPill}>
+                <Text style={styles.tagText}>{tag.replace("_", " ")}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={styles.deadlineBadge}>
           <Text style={styles.deadlineText}>{item.deadline}</Text>
         </View>
+
         <TouchableOpacity
           style={styles.lockBtn}
           onPress={() => handleLockItIn(item)}
@@ -573,7 +607,9 @@ export default function HomeFeed() {
         <Text style={styles.cardUser}>{item.user}</Text>
         <Text style={styles.cardLocation}>{item.locationName}</Text>
       </View>
+
       <Image source={{ uri: item.image }} style={styles.cardImage} />
+
       <View style={styles.postActions}>
         <View style={styles.postIconsLeft}>
           <TouchableOpacity
@@ -586,12 +622,14 @@ export default function HomeFeed() {
               size={24}
             />
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => openComments(item)}
             style={{ marginRight: 16 }}
           >
             <MessageCircle color={C.textPrimary} size={24} />
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => {
               setSelectedItem(item);
@@ -601,6 +639,7 @@ export default function HomeFeed() {
             <Send color={C.textPrimary} size={24} />
           </TouchableOpacity>
         </View>
+
         <TouchableOpacity onPress={() => toggleSave(item.id)}>
           <Bookmark
             color={
@@ -611,12 +650,14 @@ export default function HomeFeed() {
           />
         </TouchableOpacity>
       </View>
+
       <View style={styles.cardFooter}>
         <Text style={styles.likesText}>{item.likes} likes</Text>
         <Text style={styles.captionText}>
           <Text style={styles.captionUser}>{item.user} </Text>
           {item.caption}
         </Text>
+
         <TouchableOpacity
           style={[
             styles.inspireBtn,
@@ -650,9 +691,14 @@ export default function HomeFeed() {
                 />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.iconBtn}>
+
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setIsCreateEventVisible(true)}
+            >
               <PlusSquare color={C.textPrimary} size={24} />
             </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => router.push("/messages")}
@@ -685,55 +731,7 @@ export default function HomeFeed() {
                 onRefresh={() => void refreshEvents()}
               />
             }
-            ListHeaderComponent={() => (
-              <View>
-                <View style={styles.storiesRow}>
-                  <FlatList
-                    data={MOCK_STORIES}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <View style={styles.storyContainer}>
-                        <View style={styles.storyRing}>
-                          <Image
-                            source={{ uri: item.image }}
-                            style={styles.storyImage}
-                          />
-                        </View>
-                        <Text style={styles.storyText}>{item.name}</Text>
-                      </View>
-                    )}
-                    contentContainerStyle={{ paddingHorizontal: 16 }}
-                  />
-                </View>
-                <View style={styles.switcher}>
-                  {["Events", "Scrapbook"].map((tab) => (
-                    <TouchableOpacity
-                      key={tab}
-                      style={[
-                        styles.switcherTab,
-                        feedType === (tab === "Scrapbook" ? "Posts" : tab) &&
-                          styles.switcherTabActive,
-                      ]}
-                      onPress={() =>
-                        setFeedType(tab === "Scrapbook" ? "Posts" : "Events")
-                      }
-                    >
-                      <Text
-                        style={[
-                          styles.switcherText,
-                          feedType === (tab === "Scrapbook" ? "Posts" : tab) &&
-                            styles.switcherTextActive,
-                        ]}
-                      >
-                        {tab}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
+            ListHeaderComponent={renderHeader}
           />
         ) : (
           <FlatList
@@ -741,59 +739,41 @@ export default function HomeFeed() {
             keyExtractor={(item) => item.id}
             renderItem={renderPost}
             showsVerticalScrollIndicator={false}
-            ListHeaderComponent={() => (
-              <View>
-                <View style={styles.storiesRow}>
-                  <FlatList
-                    data={MOCK_STORIES}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                      <View style={styles.storyContainer}>
-                        <View style={styles.storyRing}>
-                          <Image
-                            source={{ uri: item.image }}
-                            style={styles.storyImage}
-                          />
-                        </View>
-                        <Text style={styles.storyText}>{item.name}</Text>
-                      </View>
-                    )}
-                    contentContainerStyle={{ paddingHorizontal: 16 }}
-                  />
-                </View>
-                <View style={styles.switcher}>
-                  {["Events", "Scrapbook"].map((tab) => (
-                    <TouchableOpacity
-                      key={tab}
-                      style={[
-                        styles.switcherTab,
-                        feedType === (tab === "Scrapbook" ? "Posts" : tab) &&
-                          styles.switcherTabActive,
-                      ]}
-                      onPress={() =>
-                        setFeedType(tab === "Scrapbook" ? "Posts" : "Events")
-                      }
-                    >
-                      <Text
-                        style={[
-                          styles.switcherText,
-                          feedType === (tab === "Scrapbook" ? "Posts" : tab) &&
-                            styles.switcherTextActive,
-                        ]}
-                      >
-                        {tab}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
+            ListHeaderComponent={renderHeader}
           />
         )}
 
-        {/* MODAL: Filter */}
+        <CreateEventModal
+          visible={isCreateEventVisible}
+          onClose={() => setIsCreateEventVisible(false)}
+          userId={userId}
+          onSuccess={(newEvent: any) => {
+            const mapped: EventItem = {
+              id: String(newEvent?.id || `new-${Date.now()}`),
+              user: "Bucket Community",
+              locationName:
+                newEvent?.locationName || newEvent?.category || "New Event",
+              coords: {
+                latitude: newEvent?.coords?.latitude || 32.7157,
+                longitude: newEvent?.coords?.longitude || -117.1611,
+              },
+              title: newEvent?.title || "New bucket",
+              image:
+                newEvent?.image ||
+                "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?q=80&w=1200&auto=format&fit=crop",
+              deadline: newEvent?.deadline || "Flexible timing",
+              bucketItemId: String(newEvent?.bucketItemId || ""),
+              tags: Array.isArray(newEvent?.tags) ? newEvent.tags : [],
+              category: newEvent?.category || "General",
+              time_slots: Array.isArray(newEvent?.time_slots)
+                ? newEvent.time_slots
+                : [],
+            };
+            setRecommendedEvents((prev) => [mapped, ...prev]);
+            Alert.alert("Success", "Event published to the community!");
+          }}
+        />
+
         <Modal visible={isFilterVisible} transparent animationType="fade">
           <Pressable style={styles.overlay} onPress={closeFilter}>
             <Animated.View
@@ -846,7 +826,6 @@ export default function HomeFeed() {
           </Pressable>
         </Modal>
 
-        {/* MODAL: Scrapbook Share Choices */}
         <Modal visible={isPostOptionsVisible} transparent animationType="fade">
           <Pressable
             style={styles.overlay}
@@ -868,6 +847,7 @@ export default function HomeFeed() {
                 />
                 <Text style={styles.optionBtnText}>Share as Post</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.optionBtn, { backgroundColor: C.accentLight }]}
                 onPress={() => {
@@ -888,7 +868,6 @@ export default function HomeFeed() {
           </Pressable>
         </Modal>
 
-        {/* MODAL: Share to Chats */}
         <Modal visible={isShareModalVisible} transparent animationType="none">
           <Pressable style={styles.overlay} onPress={closeShareModal}>
             <Animated.View
@@ -923,7 +902,6 @@ export default function HomeFeed() {
           </Pressable>
         </Modal>
 
-        {/* MODAL: Dummy Comments */}
         <Modal visible={isCommentsVisible} transparent animationType="fade">
           <Pressable
             style={styles.overlay}
@@ -1010,10 +988,7 @@ const styles = StyleSheet.create({
   switcherTabActive: { borderBottomWidth: 2, borderBottomColor: C.accentDark },
   switcherText: { fontSize: 14, fontWeight: "500", color: C.textMuted },
   switcherTextActive: { fontSize: 14, fontWeight: "700", color: C.textPrimary },
-  loaderWrap: {
-    marginTop: 50,
-    alignItems: "center",
-  },
+  loaderWrap: { marginTop: 50, alignItems: "center" },
   loaderText: {
     marginTop: 10,
     fontSize: 13,
@@ -1044,6 +1019,24 @@ const styles = StyleSheet.create({
     color: C.textPrimary,
     marginBottom: 8,
     flex: 1,
+  },
+  tagContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  tagPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: C.accentLight,
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: C.accentDark,
+    textTransform: "uppercase",
   },
   deadlineBadge: {
     backgroundColor: C.redBg,
@@ -1101,11 +1094,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 12,
   },
-  inspireBtnText: {
-    color: C.accentDark,
-    fontSize: 13,
-    fontWeight: "700",
-  },
+  inspireBtnText: { color: C.accentDark, fontSize: 13, fontWeight: "700" },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(26,24,20,0.45)",
@@ -1211,26 +1200,14 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     maxHeight: "70%",
   },
-  commentsSubtitle: {
-    color: C.textMuted,
-    fontSize: 13,
-    marginBottom: 14,
-  },
+  commentsSubtitle: { color: C.textMuted, fontSize: 13, marginBottom: 14 },
   commentRow: {
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     paddingVertical: 10,
   },
-  commentUser: {
-    color: C.textPrimary,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  commentText: {
-    color: C.textPrimary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  commentUser: { color: C.textPrimary, fontWeight: "700", marginBottom: 2 },
+  commentText: { color: C.textPrimary, fontSize: 14, lineHeight: 20 },
   closeCommentsBtn: {
     marginTop: 14,
     backgroundColor: C.accentDark,
@@ -1238,9 +1215,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
   },
-  closeCommentsBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
+  closeCommentsBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });
