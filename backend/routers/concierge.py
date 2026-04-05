@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from browser_use_sdk.v3 import AsyncBrowserUse
 from database import supabase
 from services.llm_service import llm # Your centralized Gemini class
-from schemas import BucketDisplay, PlanBucketRequest
+from schemas import PlanBucketRequest, PlannedBucketCard
 
 router = APIRouter(prefix="/api/concierge", tags=["AI Concierge (Browser Use)"])
 
@@ -46,7 +46,7 @@ def format_bucket_cards(raw_scraped_data: str):
     return llm.generate_structured_response(
         system_instruction=system_prompt,
         user_prompt=raw_scraped_data,
-        response_schema=list[BucketDisplay]
+        response_schema=list[PlannedBucketCard]
     )
 
 @router.post("/plan-bucket")
