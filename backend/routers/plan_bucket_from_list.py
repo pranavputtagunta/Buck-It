@@ -1,9 +1,7 @@
-import os
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from browser_use_sdk.v3 import AsyncBrowserUse
 
+from routers.concierge import format_bucket_cards, run_browser_use_plan
 from database import supabase
 from services.llm_service import llm
 
@@ -61,26 +59,13 @@ async def plan_bucket_from_list(request: PlanBucketFromListRequest):
         bucket_title = bucket_item.get("title", "activity")
         request_text = _generate_search_text(bucket_title, request.location)
 
-        client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
-        agent_task = (
-            f"Go to Yelp or Google Maps and search for: {request_text} in {request.location}. "
-            "Find three top-rated locations, or if the user provides another criteria, use that."
-            "Extract the exact Name, Address, Hours of Operation today, and a URL link to the business. "
-            "DO NOT attempt to make a reservation, click 'buy', or enter any personal information. "
-            "Return the extracted information as plain text."
-        )
-
-        result = await client.run(agent_task)
-        raw_scraped_data = result.output
+        raw_scraped_data = await run_browser_use_plan(request_text, request.location)
+        formatted_bucket = format_bucket_cards(raw_scraped_data)
 
         return {
             "status": "success",
-            "message": "Browser Use cloud agent successfully scraped the bucket list item.",
-            "data": {
-                "request_text": request_text,
-                "bucket_list_item_title": bucket_title,
-                "browser_use_output": raw_scraped_data,
-            },
+            "message": "Browser Use cloud agent successfully scraped and formatted the event.",
+            "data": formatted_bucket,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

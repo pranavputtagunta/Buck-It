@@ -12,6 +12,7 @@ class BadgeUpdate(BaseModel):
 class UserCreate(BaseModel):
     id: str
     display_name: str
+    location: str = "San Diego"
 
 @router.get("/{user_id}")
 async def get_user(user_id: str):
@@ -32,11 +33,12 @@ async def update_user_badges(user_id: str, update: BadgeUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/")
-async def add_user_badge(user: UserCreate):
+async def add_user(user: UserCreate):
     try:
         user_response = supabase.table("users").insert({
             "id": user.id,
             "display_name": user.display_name,
+            "location": user.location,
             "badges": []
         }).execute()
         return {"status": "success", "data": user_response.data}

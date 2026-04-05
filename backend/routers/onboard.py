@@ -2,16 +2,9 @@ import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.llm_service import llm
+from schemas import BucketGoal, OnboardRequest
 
 router = APIRouter(prefix="/api/onboard", tags=["AI Onboarding"])
-
-class BucketGoal(BaseModel):
-    title: str
-    deadline: str
-
-class OnboardRequest(BaseModel):
-    user_id: str
-    user_answers: str
 
 @router.post("/")
 async def onboard_user(request: OnboardRequest):
@@ -27,7 +20,7 @@ async def onboard_user(request: OnboardRequest):
             user_prompt=request.user_answers,
             response_schema=list[BucketGoal]
         )
-        
+
         return {
             "status": "success", 
             "goals": ai_response

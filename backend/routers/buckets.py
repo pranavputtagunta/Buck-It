@@ -2,27 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from database import supabase
+from services.llm_service import llm
+from schemas import BucketCreate, BucketUpdate, BucketStatusUpdate, DiscoverFeedItem, BucketDisplay
 
 router = APIRouter(prefix="/api/buckets", tags=["Buckets"])
-
-class BucketCreate(BaseModel):
-    creator_id: str
-    title: str
-    category: str
-    event_time: str
-    status: str = "planned"
-
-
-class BucketUpdate(BaseModel):
-    title: Optional[str] = None
-    category: Optional[str] = None
-    event_time: Optional[str] = None
-    status: Optional[str] = None
-
-
-class BucketStatusUpdate(BaseModel):
-    status: str 
-
 
 @router.get("/")
 async def get_all_buckets():
@@ -98,5 +81,39 @@ async def delete_bucket(bucket_id: str):
     try:
         supabase.table("buckets").delete().eq("id", bucket_id).execute()
         return {"status": "success", "message": "Bucket deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/feed/discover/{user_id}")
+async def get_discover_feed(user_id: str):
+    try:
+        # 1. Fetch the user's dream board
+        bucket_list_response = supabase.table("bucket_list_items").select("*").eq("user_id", user_id).execute()
+        user_goals = bucket_list_response.data
+
+        user_location = supabase.table("users").select("location").eq("id", user_id).execute().data[0].get("location", "San Diego")
+        print("User location:", user_location)
+
+        # 2. If they have no goals yet, give them a generic San Diego starter pack
+        if not user_goals:
+            user_goals = [{"title": "Explore San Diego", "deadline": "None"}]
+
+        # 3. Use FAST Gemini to generate 10 ideas instantly
+        system_prompt = (
+            "You are the Bucket App recommendation engine. Look at the user's high-level goals "
+            f"and suggest 10 highly specific, actionable local events in {user_location} that match them. "
+            # "Do not search the web. Rely on your internal knowledge of the city."
+        )
+
+        # Notice we are passing the goals as context to our LLM service
+        feed_items = llm.generate_structured_response(
+            system_instruction=system_prompt,
+            user_prompt="Generate my daily discover feed.",
+            response_schema=list[BucketDisplay],
+            user_context={"user_goals": user_goals}
+        )
+
+        return {"status": "success", "data": feed_items}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

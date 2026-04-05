@@ -3,7 +3,12 @@ import { supabase } from "../../supabase";
 import { API_BASE_URL, handleApiError } from "./apiClient";
 
 export const authService = {
-  async signUp(email: string, password: string, displayName: string) {
+  async signUp(
+    email: string,
+    password: string,
+    displayName: string,
+    location: string,
+  ) {
     // 1. Securely sign up via Supabase
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
@@ -22,6 +27,7 @@ export const authService = {
       body: JSON.stringify({
         id: userId,
         display_name: displayName,
+        location: location,
       }),
     });
 
