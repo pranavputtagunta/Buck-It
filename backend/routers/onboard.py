@@ -11,7 +11,7 @@ async def onboard_user(request: OnboardRequest):
     try:
         system_instruction = (
             "You are 'The Hype Guide', an energetic AI onboarding assistant for a social app called Bucket. "
-            "Generate EXACTLY 3 actionable bucket list goals based on the user's input. "
+            "Generate EXACTLY 8 actionable bucket list goals based on the user's input. "
             "Assign a realistic deadline for each (formatted strictly as YYYY-MM-DD)."
         )
 

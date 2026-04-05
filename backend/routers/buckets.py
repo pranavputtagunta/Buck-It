@@ -2,10 +2,20 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from database import supabase
+from services.llm_service import llm
 from services.category_badge_service import normalize_bucket_category, recalculate_user_badges
-from schemas import BucketCloneRequest, BucketCreate, BucketJoinRequest, BucketStatusUpdate, BucketUpdate
+from schemas import (
+    BucketAcceptDiscoverRequest,
+    BucketCloneRequest,
+    BucketCreate,
+    BucketDisplay,
+    BucketJoinRequest,
+    BucketStatusUpdate,
+    BucketUpdate,
+)
 
 router = APIRouter(prefix="/api/buckets", tags=["Buckets"])
+BUCKET_LIST_ITEM_NOT_FOUND = "Bucket list item not found for this user"
 
 def _sync_bucket_visibility(bucket_id: str) -> None:
     bucket_response = (
@@ -125,6 +135,59 @@ def _score_bucket_for_user(bucket: dict, bucket_list_titles: list[str]) -> int:
     return score
 
 
+def _generate_ai_discover_buckets(user_id: str, user_goals: list[dict]) -> list[dict]:
+    user_response = supabase.table("users").select("location").eq("id", user_id).execute()
+    user_location = "San Diego"
+    if user_response.data:
+        first_row = user_response.data[0]
+        if isinstance(first_row, dict):
+            user_location = first_row.get("location") or "San Diego"
+
+    goals_context = user_goals or [{"title": "Explore local activities", "deadline": None}]
+    system_prompt = (
+        "You are the Bucket App discover engine. Generate exactly 8 NEW bucket ideas the user can add "
+        "to their own plans. Do not include already completed activities. "
+        "Use practical, near-term suggestions and set status to planned. "
+        f"Anchor suggestions to this city: {user_location}."
+    )
+
+    ai_rows = llm.generate_structured_response(
+        system_instruction=system_prompt,
+        user_prompt="Generate discover suggestions.",
+        response_schema=list[BucketDisplay],
+        user_context={"user_goals": goals_context, "location": user_location},
+    )
+
+    if not isinstance(ai_rows, list):
+        return []
+
+    normalized_rows = []
+    for row in ai_rows:
+        if not isinstance(row, dict):
+            continue
+        category_value = row.get("category") or ""
+        try:
+            normalized_category = normalize_bucket_category(category_value)
+        except HTTPException:
+            continue
+
+        normalized_rows.append(
+            {
+                "title": row.get("title"),
+                "category": normalized_category,
+                "description": row.get("description"),
+                "location": row.get("location") or user_location,
+                "event_time": row.get("event_time"),
+                "estimated_cost": row.get("estimated_cost"),
+                "link": row.get("link"),
+                "image_keyword": row.get("image_keyword"),
+                "status": "planned",
+            }
+        )
+
+    return normalized_rows[:8]
+
+
 @router.get("/")
 async def get_all_buckets():
     try:
@@ -211,6 +274,43 @@ async def get_discover_feed(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/discover-page/{user_id}")
+async def get_discover_page(user_id: str):
+    """Returns both completed social posts and AI discover suggestions for the Discover page."""
+    try:
+        completed_posts_response = (
+            supabase.table("buckets")
+            .select("*")
+            .eq("status", "completed")
+            .in_("visibility", ["shared", "public"])
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        completed_posts = [_build_bucket_details(bucket) for bucket in (completed_posts_response.data or [])]
+
+        user_goals_response = (
+            supabase.table("bucket_list_items")
+            .select("title, deadline")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        user_goals = user_goals_response.data or []
+        discover_suggestions = _generate_ai_discover_buckets(user_id, user_goals)
+
+        return {
+            "status": "success",
+            "data": {
+                "completed_posts": completed_posts,
+                "discover_suggestions": discover_suggestions,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/user/{user_id}")
 async def get_user_buckets(user_id: str):
     """Fetches all buckets for a specific user."""
@@ -237,6 +337,81 @@ async def get_user_buckets(user_id: str):
         response = supabase.table("buckets").select("*").in_("id", list(bucket_ids)).order("created_at", desc=True).execute()
         buckets = [_build_bucket_details(bucket) for bucket in (response.data or [])]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/user/{user_id}/grouped")
+async def get_user_buckets_grouped(user_id: str):
+    """Returns owned, joined, and invited buckets in separate groups for gallery tabs."""
+    try:
+        owned_response = (
+            supabase.table("buckets")
+            .select("*")
+            .eq("creator_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        owned_buckets = [_build_bucket_details(bucket) for bucket in (owned_response.data or [])]
+
+        joined_memberships_response = (
+            supabase.table("bucket_members")
+            .select("bucket_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        joined_ids = {
+            row["bucket_id"]
+            for row in (joined_memberships_response.data or [])
+            if isinstance(row, dict) and row.get("bucket_id")
+        }
+
+        owned_ids = {bucket.get("id") for bucket in owned_buckets if isinstance(bucket, dict) and bucket.get("id")}
+        joined_only_ids = list(joined_ids - owned_ids)
+
+        joined_buckets = []
+        if joined_only_ids:
+            joined_response = (
+                supabase.table("buckets")
+                .select("*")
+                .in_("id", joined_only_ids)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            joined_buckets = [_build_bucket_details(bucket) for bucket in (joined_response.data or [])]
+
+        invitations_response = (
+            supabase.table("bucket_invitations")
+            .select("id, bucket_id, inviter_id, status, created_at")
+            .eq("invitee_id", user_id)
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        pending_invitations = invitations_response.data or []
+        invited_ids = list({row.get("bucket_id") for row in pending_invitations if isinstance(row, dict) and row.get("bucket_id")})
+
+        invited_buckets = []
+        if invited_ids:
+            invited_response = (
+                supabase.table("buckets")
+                .select("*")
+                .in_("id", invited_ids)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            invited_buckets = [_build_bucket_details(bucket) for bucket in (invited_response.data or [])]
+
+        return {
+            "status": "success",
+            "data": {
+                "owned": owned_buckets,
+                "joined": joined_buckets,
+                "invited": invited_buckets,
+            },
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -272,7 +447,7 @@ async def create_bucket(bucket: BucketCreate):
                 .execute()
             )
             if not bucket_item_response.data:
-                raise HTTPException(status_code=404, detail="Bucket list item not found for this user")
+                raise HTTPException(status_code=404, detail=BUCKET_LIST_ITEM_NOT_FOUND)
 
         response = supabase.table("buckets").insert({
             "creator_id": bucket.creator_id,
@@ -325,7 +500,7 @@ async def update_bucket(bucket_id: str, update: BucketUpdate):
                 .execute()
             )
             if not bucket_item_response.data:
-                raise HTTPException(status_code=404, detail="Bucket list item not found for this user")
+                raise HTTPException(status_code=404, detail=BUCKET_LIST_ITEM_NOT_FOUND)
 
         response = supabase.table("buckets").update(update_data).eq("id", bucket_id).execute()
         if "category" in update_data:
@@ -384,6 +559,48 @@ async def join_bucket(bucket_id: str, payload: BucketJoinRequest):
             "message": "Joined bucket successfully",
             "data": _build_bucket_details(refreshed_bucket),
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/accept-discover")
+async def accept_discover_bucket(payload: BucketAcceptDiscoverRequest):
+    """Persist an AI discover suggestion as a planned bucket for the user."""
+    try:
+        normalized_category = normalize_bucket_category(payload.category)
+
+        if payload.bucket_list_item_id:
+            bucket_item_response = (
+                supabase.table("bucket_list_items")
+                .select("id")
+                .eq("id", payload.bucket_list_item_id)
+                .eq("user_id", payload.actor_id)
+                .execute()
+            )
+            if not bucket_item_response.data:
+                raise HTTPException(status_code=404, detail=BUCKET_LIST_ITEM_NOT_FOUND)
+
+        insert_response = supabase.table("buckets").insert(
+            {
+                "creator_id": payload.actor_id,
+                "bucket_list_item_id": payload.bucket_list_item_id,
+                "title": payload.title,
+                "category": normalized_category,
+                "event_time": payload.event_time,
+                "status": "planned",
+                "visibility": payload.visibility,
+            }
+        ).execute()
+
+        if not insert_response.data:
+            raise HTTPException(status_code=500, detail="Discover bucket acceptance failed")
+
+        created_bucket = insert_response.data[0]
+        _ensure_bucket_membership(created_bucket["id"], payload.actor_id, role="creator")
+        refreshed_bucket = _get_bucket_row(created_bucket["id"])
+        return {"status": "success", "data": _build_bucket_details(refreshed_bucket)}
     except HTTPException:
         raise
     except Exception as e:

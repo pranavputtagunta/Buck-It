@@ -25,6 +25,17 @@ class BucketListItemCreate(BaseModel):
     deadline: Optional[str] = None
 
 
+class BucketListGoalInput(BaseModel):
+    title: str
+    deadline: Optional[str] = None
+
+
+class BucketListBulkCreate(BaseModel):
+    user_id: str
+    accepted_goals: List[BucketListGoalInput] = []
+    custom_goals: List[BucketListGoalInput] = []
+
+
 class BucketListItemUpdate(BaseModel):
     title: Optional[str] = None
     deadline: Optional[str] = None
@@ -99,6 +110,16 @@ class BucketCloneRequest(BaseModel):
     actor_id: str
     event_time: str
     visibility: str = "private"
+
+
+class BucketAcceptDiscoverRequest(BaseModel):
+    actor_id: str
+    title: str
+    category: str
+    description: Optional[str] = None
+    event_time: str
+    visibility: str = "private"
+    bucket_list_item_id: Optional[str] = None
 
 
 class BucketCommentCreate(BaseModel):

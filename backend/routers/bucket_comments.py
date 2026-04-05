@@ -10,6 +10,7 @@ from schemas import BucketCommentCreate, BucketCommentUpdate
 router = APIRouter(prefix="/api/bucket-comments", tags=["Bucket Comments"])
 
 _FALLBACK_BUCKET_COMMENTS: list[dict] = []
+COMMENT_NOT_FOUND = "Comment not found"
 
 
 def _get_bucket(bucket_id: str) -> dict:
@@ -114,7 +115,7 @@ async def update_bucket_comment(comment_id: str, payload: BucketCommentUpdate):
         try:
             comment_response = supabase.table("bucket_comments").select("*").eq("id", comment_id).execute()
             if not comment_response.data:
-                raise HTTPException(status_code=404, detail="Comment not found")
+                raise HTTPException(status_code=404, detail=COMMENT_NOT_FOUND)
 
             comment = comment_response.data[0]
             if comment.get("user_id") != payload.actor_id:
@@ -133,7 +134,7 @@ async def update_bucket_comment(comment_id: str, payload: BucketCommentUpdate):
 
             comment = next((item for item in _FALLBACK_BUCKET_COMMENTS if item["id"] == comment_id), None)
             if not comment:
-                raise HTTPException(status_code=404, detail="Comment not found")
+                raise HTTPException(status_code=404, detail=COMMENT_NOT_FOUND)
             if comment.get("user_id") != payload.actor_id:
                 raise HTTPException(status_code=403, detail="Only the comment author can edit this comment")
             comment["content"] = payload.content
@@ -151,7 +152,7 @@ async def delete_bucket_comment(comment_id: str, actor_id: str):
         try:
             comment_response = supabase.table("bucket_comments").select("*").eq("id", comment_id).execute()
             if not comment_response.data:
-                raise HTTPException(status_code=404, detail="Comment not found")
+                raise HTTPException(status_code=404, detail=COMMENT_NOT_FOUND)
 
             comment = comment_response.data[0]
             bucket = _get_bucket(comment["bucket_id"])
@@ -166,7 +167,7 @@ async def delete_bucket_comment(comment_id: str, actor_id: str):
 
             index = next((i for i, item in enumerate(_FALLBACK_BUCKET_COMMENTS) if item["id"] == comment_id), None)
             if index is None:
-                raise HTTPException(status_code=404, detail="Comment not found")
+                raise HTTPException(status_code=404, detail=COMMENT_NOT_FOUND)
             comment = _FALLBACK_BUCKET_COMMENTS[index]
             bucket = _get_bucket(comment["bucket_id"])
             if actor_id not in {comment.get("user_id"), bucket.get("creator_id")}:
