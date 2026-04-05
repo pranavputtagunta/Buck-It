@@ -8,8 +8,9 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
-import { Settings, Bell, Lock, CircleHelp, LogOut, Sparkles, Calendar, Trash2, Zap } from 'lucide-react-native';
+import { Settings, Bell, Lock, CircleHelp, LogOut, Calendar, Trash2, Zap, Smile, Tag } from 'lucide-react-native';
 import { supabase } from '../../app/lib/supabase';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -21,33 +22,26 @@ const C = {
   availableLight: '#E5F9EB', 
 };
 
-// ─── Matrix Config ────────────────────────────────────────────────────────────
 const DAYS = [
-  { id: 'Mon', label: 'M' },
-  { id: 'Tue', label: 'T' },
-  { id: 'Wed', label: 'W' },
-  { id: 'Thu', label: 'T' },
-  { id: 'Fri', label: 'F' },
-  { id: 'Sat', label: 'S' },
+  { id: 'Mon', label: 'M' }, { id: 'Tue', label: 'T' }, { id: 'Wed', label: 'W' },
+  { id: 'Thu', label: 'T' }, { id: 'Fri', label: 'F' }, { id: 'Sat', label: 'S' },
   { id: 'Sun', label: 'S' },
 ];
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
-
-const formatHour = (h: number) => {
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
-  return `${hour12} ${ampm}`;
-};
+const formatHour = (h: number) => `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`;
 
 export default function ProfileScreen() {
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingVibe, setIsUpdatingVibe] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
   // Auth & Profile State
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('Loading...');
+  const [personality, setPersonality] = useState('');
+  const [interestsInput, setInterestsInput] = useState('');
 
   // ─── Fetch Data on Load ───
   useEffect(() => {
@@ -59,17 +53,17 @@ export default function ProfileScreen() {
         const uid = session.user.id;
         setUserId(uid);
 
-        // 1. Fetch Profile Name
+        // 1. Fetch Profile Info (Added personality and interests)
         const { data: profile } = await supabase
           .from('users')
-          .select('display_name')
+          .select('display_name, personality, interests')
           .eq('id', uid)
           .single();
           
-        if (profile?.display_name) {
-          setUserName(profile.display_name);
-        } else {
-          setUserName('Bucket User');
+        if (profile) {
+          setUserName(profile.display_name || 'Bucket User');
+          setPersonality(profile.personality || '');
+          setInterestsInput(profile.interests ? profile.interests.join(', ') : '');
         }
 
         // 2. Fetch Availability Matrix
@@ -93,7 +87,52 @@ export default function ProfileScreen() {
     loadData();
   }, []);
 
-  // ─── Grid Logic ───
+  // ─── Save Vibe (Personality & Interests) ───
+  const saveVibe = async () => {
+    if (!userId) return;
+    setIsUpdatingVibe(true);
+    try {
+      const interestsArray = interestsInput.split(',').map(i => i.trim()).filter(i => i !== '');
+      
+      const { error } = await supabase
+        .from('users')
+        .update({
+          personality: personality.trim(),
+          interests: interestsArray,
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+      Alert.alert("Vibe Updated", "Buck-it AI has adjusted your matching algorithm! ✨");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to update vibe.");
+    } finally {
+      setIsUpdatingVibe(false);
+    }
+  };
+
+  // ─── Save Availability ───
+  const saveAvailability = async () => {
+    if (!userId) return;
+    setIsSaving(true);
+    try {
+      const slotsArray = Array.from(selectedSlots);
+      const { error } = await supabase
+        .from('availabilities')
+        .upsert({ 
+          user_id: userId, 
+          available_slots: slotsArray,
+          updated_at: new Date().toISOString()
+        });
+      if (error) throw error;
+      Alert.alert("Schedule Locked", "Buck-it AI will use this matrix to auto-suggest event times!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Could not sync availability.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const toggleSlot = (dayId: string, hour: number) => {
     const slotKey = `${dayId}-${hour}`;
     setSelectedSlots(prev => {
@@ -116,53 +155,6 @@ export default function ProfileScreen() {
     setSelectedSlots(newSlots);
   };
 
-  const clearAll = () => {
-    setSelectedSlots(new Set());
-  };
-
-  // ─── Save to Supabase ───
-  const saveAvailability = async () => {
-    if (!userId) return;
-    setIsSaving(true);
-    
-    try {
-      const slotsArray = Array.from(selectedSlots);
-      
-      // Upsert: Updates if row exists, inserts if it doesn't
-      const { error } = await supabase
-        .from('availabilities')
-        .upsert({ 
-          user_id: userId, 
-          available_slots: slotsArray,
-          updated_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-      
-      Alert.alert("Schedule Locked", "Buck-it AI will use this matrix to auto-suggest event times! ✨");
-
-    } catch (err: any) {
-      console.error(err);
-      Alert.alert("Error", err.message || "Could not sync availability.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const SettingsRow = ({ icon, title, isDestructive = false, onPress }: any) => (
-    <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={onPress}>
-      <View style={styles.settingsRowLeft}>
-        {icon}
-        <Text style={[styles.settingsRowTitle, isDestructive && { color: '#FF3B30' }]}>{title}</Text>
-      </View>
-      <ChevronRight color={C.textLight} size={20} />
-    </TouchableOpacity>
-  );
-
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -182,62 +174,71 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.userName}>{userName}</Text>
           <Text style={styles.userHandle}>@{userName.toLowerCase().replace(/\s+/g, '_')}</Text>
-          <TouchableOpacity style={styles.editProfileBtn}>
-            <Text style={styles.editProfileText}>Edit Profile</Text>
+        </View>
+
+        {/* ── NEW: Your Vibe Section ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Smile color={C.accentDark} size={18} style={{ marginRight: 8 }} />
+              <Text style={styles.cardTitle}>Your Vibe</Text>
+            </View>
+            <Text style={styles.cardSubtitle}>Edit your personality and interests for the AI.</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>PERSONALITY</Text>
+            <TextInput
+              style={styles.textInput}
+              value={personality}
+              onChangeText={setPersonality}
+              placeholder="Adventurous, creative..."
+              placeholderTextColor={C.textLight}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>INTERESTS (COMMA SEPARATED)</Text>
+            <TextInput
+              style={[styles.textInput, { minHeight: 60 }]}
+              value={interestsInput}
+              onChangeText={setInterestsInput}
+              multiline
+              placeholder="Hiking, coding, surfing..."
+              placeholderTextColor={C.textLight}
+            />
+          </View>
+
+          <TouchableOpacity style={[styles.saveBtn, { backgroundColor: C.accentDark }]} onPress={saveVibe} disabled={isUpdatingVibe}>
+            {isUpdatingVibe ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveBtnText}>Update Vibe</Text>}
           </TouchableOpacity>
         </View>
 
-        {/* AI Availability Matrix */}
+        {/* Availability Matrix */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Calendar color={C.accentDark} size={18} style={{ marginRight: 8 }} />
               <Text style={styles.cardTitle}>Availability Matrix</Text>
             </View>
-            <Text style={styles.cardSubtitle}>Tap the hourly blocks when you're generally free.</Text>
           </View>
 
           <View style={styles.quickActionsRow}>
-            <TouchableOpacity style={styles.quickActionBtn} onPress={fillSocialHours}>
-              <Zap color={C.accentDark} size={14} style={{ marginRight: 4 }} />
-              <Text style={styles.quickActionText}>Nights & Weekends</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickActionBtn, { backgroundColor: '#FFF0F0', borderColor: '#FFD6D6' }]} onPress={clearAll}>
-              <Trash2 color="#FF3B30" size={14} style={{ marginRight: 4 }} />
-              <Text style={[styles.quickActionText, { color: '#FF3B30' }]}>Clear</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionBtn} onPress={fillSocialHours}><Zap color={C.accentDark} size={14} style={{ marginRight: 4 }} /><Text style={styles.quickActionText}>Nights & Weekends</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.quickActionBtn, { backgroundColor: '#FFF0F0' }]} onPress={() => setSelectedSlots(new Set())}><Trash2 color="#FF3B30" size={14} style={{ marginRight: 4 }} /><Text style={[styles.quickActionText, { color: '#FF3B30' }]}>Clear</Text></TouchableOpacity>
           </View>
 
-          {/* THE GRID */}
           <View style={styles.gridWrapper}>
             <View style={styles.gridRowHeader}>
               <View style={styles.timeLabelCell} />
-              {DAYS.map((day, i) => (
-                <View key={`header-${i}`} style={styles.dayHeaderCell}>
-                  <Text style={styles.dayHeaderText}>{day.label}</Text>
-                </View>
-              ))}
+              {DAYS.map((day, i) => (<View key={i} style={styles.dayHeaderCell}><Text style={styles.dayHeaderText}>{day.label}</Text></View>))}
             </View>
-
             {HOURS.map((hour) => (
               <View key={hour} style={styles.gridRow}>
-                <View style={styles.timeLabelCell}>
-                  <Text style={styles.timeLabelText}>{formatHour(hour)}</Text>
-                </View>
+                <View style={styles.timeLabelCell}><Text style={styles.timeLabelText}>{formatHour(hour)}</Text></View>
                 {DAYS.map((day) => {
                   const slotKey = `${day.id}-${hour}`;
-                  const isSelected = selectedSlots.has(slotKey);
-                  return (
-                    <TouchableOpacity
-                      key={slotKey}
-                      activeOpacity={0.7}
-                      onPress={() => toggleSlot(day.id, hour)}
-                      style={[
-                        styles.gridCell,
-                        isSelected ? styles.gridCellActive : styles.gridCellInactive,
-                      ]}
-                    />
-                  );
+                  return (<TouchableOpacity key={slotKey} activeOpacity={0.7} onPress={() => toggleSlot(day.id, hour)} style={[styles.gridCell, selectedSlots.has(slotKey) ? styles.gridCellActive : styles.gridCellInactive]} />);
                 })}
               </View>
             ))}
@@ -248,24 +249,13 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Standard Settings */}
-        <View style={styles.settingsGroup}>
-          <Text style={styles.groupLabel}>ACCOUNT</Text>
-          <View style={styles.settingsCard}>
-            <SettingsRow icon={<Settings size={20} color={C.textPrimary} />} title="Preferences" />
-            <View style={styles.divider} />
-            <SettingsRow icon={<Bell size={20} color={C.textPrimary} />} title="Notifications" />
-            <View style={styles.divider} />
-            <SettingsRow icon={<Lock size={20} color={C.textPrimary} />} title="Privacy & Security" />
-          </View>
-        </View>
-
+        {/* Support Section */}
         <View style={styles.settingsGroup}>
           <Text style={styles.groupLabel}>SUPPORT</Text>
           <View style={styles.settingsCard}>
-            <SettingsRow icon={<CircleHelp size={20} color={C.textPrimary} />} title="Help Center" />
-            <View style={styles.divider} />
-            <SettingsRow icon={<LogOut size={20} color="#FF3B30" />} title="Log Out" isDestructive onPress={handleLogout} />
+            <TouchableOpacity style={styles.settingsRow} onPress={() => supabase.auth.signOut()}>
+              <View style={styles.settingsRowLeft}><LogOut size={20} color="#FF3B30" /><Text style={[styles.settingsRowTitle, { color: '#FF3B30' }]}>Log Out</Text></View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -274,22 +264,24 @@ export default function ProfileScreen() {
   );
 }
 
-const ChevronRight = ({ color, size }: any) => <Text style={{ color, fontSize: size }}>›</Text>;
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   content: { padding: 16, paddingBottom: 60 },
   header: { alignItems: 'center', marginBottom: 30, paddingTop: 20 },
   avatarLarge: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.accentLight, borderWidth: 2, borderColor: C.borderMid, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  avatarTextLarge: { fontSize: 28, fontWeight: '800', color: C.accentDark, letterSpacing: 1 },
-  userName: { fontSize: 24, fontWeight: '800', color: C.textPrimary, letterSpacing: -0.5 },
+  avatarTextLarge: { fontSize: 28, fontWeight: '800', color: C.accentDark },
+  userName: { fontSize: 24, fontWeight: '800', color: C.textPrimary },
   userHandle: { fontSize: 15, color: C.textMuted, marginTop: 2, marginBottom: 16 },
-  editProfileBtn: { backgroundColor: C.surface, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: C.border },
-  editProfileText: { fontSize: 14, fontWeight: '700', color: C.textPrimary },
-  card: { backgroundColor: C.surface, borderRadius: 24, padding: 20, marginBottom: 30, borderWidth: 1, borderColor: C.border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
+  card: { backgroundColor: C.surface, borderRadius: 24, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border },
   cardHeader: { marginBottom: 16 },
   cardTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary },
-  cardSubtitle: { fontSize: 14, color: C.textMuted, marginTop: 6, lineHeight: 20 },
+  cardSubtitle: { fontSize: 14, color: C.textMuted, marginTop: 4 },
+  
+  // Vibe Input Styles
+  inputGroup: { marginBottom: 16 },
+  inputLabel: { fontSize: 10, fontWeight: '700', color: C.textLight, letterSpacing: 1, marginBottom: 8 },
+  textInput: { backgroundColor: C.bg, borderRadius: 12, padding: 12, fontSize: 14, color: C.textPrimary, borderWidth: 1, borderColor: C.borderMid },
+
   quickActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   quickActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg, borderWidth: 1, borderColor: C.borderMid, paddingVertical: 10, borderRadius: 12 },
   quickActionText: { fontSize: 13, fontWeight: '700', color: C.accentDark },
@@ -303,13 +295,12 @@ const styles = StyleSheet.create({
   gridCell: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: C.borderMid },
   gridCellInactive: { backgroundColor: C.surface },
   gridCellActive: { backgroundColor: C.available },
-  saveBtn: { backgroundColor: '#000', borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
+  saveBtn: { backgroundColor: '#000', borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 12 },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   settingsGroup: { marginBottom: 24 },
   groupLabel: { fontSize: 12, fontWeight: '700', color: C.textMuted, letterSpacing: 1, marginLeft: 16, marginBottom: 8 },
   settingsCard: { backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
   settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
   settingsRowLeft: { flexDirection: 'row', alignItems: 'center' },
-  settingsRowTitle: { fontSize: 16, fontWeight: '600', color: C.textPrimary, marginLeft: 12 },
-  divider: { height: 1, backgroundColor: C.border, marginLeft: 48 },
+  settingsRowTitle: { fontSize: 16, fontWeight: '600', marginLeft: 12 },
 });
