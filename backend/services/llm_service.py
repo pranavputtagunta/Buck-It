@@ -3,13 +3,18 @@
 import os
 import json
 from typing import Type, Any, Optional
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from pathlib import Path
 from google import genai
 from google.genai import types
 
 
+env_path = find_dotenv()
+print(f"🔍 [DEBUG] dotenv found .env file at: {env_path}")
+load_dotenv(env_path)
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+print('GEMINI KEY LOADED: ', 'GEMINI_API_KEY' in os.environ)
 
 class GeminiManager:
     def __init__(self):
@@ -54,8 +59,15 @@ class GeminiManager:
             ),
         )
 
-        # 3. Parse and return the JSON dictionary
-        return json.loads(response.text)
+        # 3. Bulletproof JSON Parsing (Strips markdown backticks if present)
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:-3].strip()
+        elif raw_text.startswith("```"):
+            raw_text = raw_text[3:-3].strip()
+            
+        return json.loads(raw_text)
+
 
 # Create a singleton instance to import across your app
 llm = GeminiManager()

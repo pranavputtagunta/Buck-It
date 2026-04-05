@@ -12,7 +12,19 @@ from schemas import (
     BucketJoinRequest,
     BucketStatusUpdate,
     BucketUpdate,
+    BucketListItemCreate
 )
+
+TAXONOMY = """
+{
+  "Health & Fitness": ["running", "bouldering", "yoga", "gym", "hiking", "surfing", "cycling", "martial_arts"],
+  "Travel & Adventure": ["road_trip", "camping", "backpacking", "beach", "mountains", "international", "sightseeing"],
+  "Career & Skills": ["hackathon", "coding", "networking", "workshop", "design", "finance", "startup", "robotics"],
+  "Creative & Art": ["photography", "painting", "music", "writing", "film", "dance", "cooking", "fashion"],
+  "Social & Nightlife": ["clubbing", "bar_hopping", "dinner", "board_games", "karaoke", "live_shows", "festivals"],
+  "Relaxation": ["meditation", "reading", "spa", "museum", "cafe", "picnic"]
+}
+"""
 
 router = APIRouter(prefix="/api/buckets", tags=["Buckets"])
 BUCKET_LIST_ITEM_NOT_FOUND = "Bucket list item not found for this user"
@@ -418,6 +430,103 @@ async def get_user_buckets_grouped(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from pydantic import BaseModel
+from typing import Optional
+
+class BucketTagsSchema(BaseModel):
+    category: str
+    tags: list[str]
+
+@router.post("/list-items")
+async def add_bucket_list_item(item: BucketListItemCreate):
+    """Auto-tags a bucket list goal with the LLM and saves it to the DB."""
+    
+    system_instruction = f"""
+    You are an auto-tagging AI for a social bucket-list app. 
+    Categorize the user's goal into exactly ONE of the main categories, and select 2-4 relevant tags from the sub-arrays. 
+    ONLY return raw JSON using the categories and tags from this strict taxonomy:
+    {TAXONOMY}
+    """
+
+    try:
+        llm_result = llm.generate_structured_response(
+            system_instruction=system_instruction,
+            user_prompt=f"Goal: {item.title}",
+            response_schema=BucketTagsSchema
+        )
+        
+        # Extract the AI data
+        category = llm_result.get("category", "General")
+        tags = llm_result.get("tags", [])
+        
+        # Append the main category to the tags array so you don't lose it
+        if category and category not in tags:
+            tags.append(category)
+
+    except Exception as e:
+        # 🚨 THIS WILL TELL YOU EXACTLY WHAT IS WRONG IN YOUR TERMINAL 🚨
+        print(f"\n❌ LLM TAGGING FAILED: {str(e)}\n")
+        tags = ["General"]
+
+    # Database Insert (Notice we only insert 'tags' since 'category' column doesn't exist on this table)
+    db_payload = {
+        "user_id": item.user_id,
+        "title": item.title,
+        "deadline": item.deadline,
+        "tags": tags, 
+        "completed": False
+    }
+
+    db_res = supabase.table("bucket_list_items").insert(db_payload).execute()
+
+    if not db_res.data:
+        raise HTTPException(status_code=500, detail="Database insert failed")
+
+    return db_res.data[0]
+    """Auto-tags a bucket list goal with the LLM and saves it to the DB."""
+    system_instruction = f"""
+    You are an auto-tagging AI for a social bucket-list app. 
+    Categorize the user's goal into exactly ONE of the main categories, and select 2-4 relevant tags from the sub-arrays. 
+    ONLY use the categories and tags from this strict taxonomy JSON:
+    {TAXONOMY}
+    """
+
+    try:
+        llm_result = llm.generate_structured_response(
+            system_instruction=system_instruction,
+            user_prompt=f"Goal: {item.title}",
+            response_schema=BucketTagsSchema
+        )
+        
+        # 2. Extract tags. If category exists, we can optionally append it to the tags array 
+        # so you don't lose that context, since you only have a 'tags' column.
+        category = llm_result.get("category", "General")
+        tags = llm_result.get("tags", [])
+        
+        # Append the category to the tags array for better matching
+        if category not in tags:
+            tags.append(category)
+
+    except Exception as e:
+        print(f"LLM Tagging Failed: {e}")
+        tags = ["General"]
+
+    # 3. Update the payload to match your Supabase schema exactly
+    db_payload = {
+        "user_id": item.user_id,
+        "title": item.title,
+        "deadline": item.deadline,
+        "tags": tags,          # Only passing tags, not category
+        "completed": False
+    }
+
+    db_res = supabase.table("bucket_list_items").insert(db_payload).execute()
+
+    if not db_res.data:
+        raise HTTPException(status_code=500, detail="Database insert failed")
+
+    return db_res.data[0]
+# 2. The dynamic catch-all route stays BELOW
 @router.get("/{bucket_id}")
 async def get_bucket(bucket_id: str):
     try:
