@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Alert,
   FlatList,
   ListRenderItemInfo,
   SafeAreaView,
@@ -14,9 +15,11 @@ import {
   TextInput,
   Modal,
   Pressable,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 import {
   Users,
   Camera,
@@ -104,7 +107,13 @@ const TAB_CONFIG = {
 };
 
 // ─── Completed Card ───────────────────────────────────────────────────────────
-function CompletedCard({ item }: { item: ActionItem }) {
+function CompletedCard({
+  item,
+  onOpenScrapbook,
+}: {
+  item: ActionItem;
+  onOpenScrapbook: (item: ActionItem) => void;
+}) {
   const [open, setOpen] = useState(false);
   const cfg = TAB_CONFIG.Completed;
 
@@ -212,12 +221,32 @@ function CompletedCard({ item }: { item: ActionItem }) {
           </ScrollView>
         </View>
       )}
+
+      <TouchableOpacity
+        style={styles.cardActionBtn}
+        activeOpacity={0.8}
+        onPress={() => onOpenScrapbook(item)}
+      >
+        <Text style={styles.cardActionBtnText}>View Scrapbook</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 // ─── Standard Card (Planned / Active) ─────────────────────────────────────────
-function StandardCard({ item, tab }: { item: ActionItem; tab: TabType }) {
+function StandardCard({
+  item,
+  tab,
+  onStartBucket,
+  onAddMedia,
+  onCompleteBucket,
+}: {
+  item: ActionItem;
+  tab: TabType;
+  onStartBucket: (item: ActionItem) => void;
+  onAddMedia: (item: ActionItem) => void;
+  onCompleteBucket: (item: ActionItem) => void;
+}) {
   const cfg = TAB_CONFIG[tab];
   return (
     <View
@@ -255,6 +284,44 @@ function StandardCard({ item, tab }: { item: ActionItem; tab: TabType }) {
           </Text>
         </View>
       </View>
+      {tab === "Planned" && (
+        <TouchableOpacity
+          style={styles.cardActionBtn}
+          activeOpacity={0.8}
+          onPress={() => onStartBucket(item)}
+        >
+          <Text style={styles.cardActionBtnText}>Start Bucket</Text>
+        </TouchableOpacity>
+      )}
+      {tab === "Active" && (
+        <View style={styles.cardActionRow}>
+          <TouchableOpacity
+            style={[
+              styles.cardActionBtn,
+              styles.cardActionBtnSecondary,
+              styles.cardActionBtnNarrow,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => onAddMedia(item)}
+          >
+            <Text
+              style={[
+                styles.cardActionBtnText,
+                styles.cardActionBtnSecondaryText,
+              ]}
+            >
+              Add Media
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.cardActionBtn, styles.cardActionBtnWide]}
+            activeOpacity={0.8}
+            onPress={() => onCompleteBucket(item)}
+          >
+            <Text style={styles.cardActionBtnText}>Complete Bucket</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -290,6 +357,12 @@ export default function GalleryScreen() {
   const [conciergeResults, setConciergeResults] = useState<ConciergeCard[]>([]);
   const [isConciergeLoading, setIsConciergeLoading] = useState(false);
   const [isAcceptingConcierge, setIsAcceptingConcierge] = useState(false);
+  const [isSavingAction, setIsSavingAction] = useState(false);
+  const [isScrapbookModalVisible, setIsScrapbookModalVisible] = useState(false);
+  const [selectedScrapbookItem, setSelectedScrapbookItem] =
+    useState<ActionItem | null>(null);
+  const [isImagePreviewVisible, setIsImagePreviewVisible] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
 
   const mapEventsToTabs = (data: any[]) => {
     const planned: ActionItem[] = [];
@@ -441,6 +514,127 @@ export default function GalleryScreen() {
     setConciergeResults((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const updateEventRow = async (
+    eventId: string,
+    payload: Record<string, any>,
+  ) => {
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from("events")
+      .update(payload)
+      .eq("id", eventId)
+      .eq("user_id", userId);
+
+    if (error) throw error;
+  };
+
+  const handleStartBucket = async (item: ActionItem) => {
+    if (!userId || isSavingAction) return;
+    try {
+      setIsSavingAction(true);
+      await updateEventRow(item.id, {
+        is_active: true,
+        completed: false,
+        status_text: "In progress",
+      });
+      await fetchEvents(userId);
+      setActiveTab("Active");
+    } catch (err) {
+      console.error("Failed to start bucket:", err);
+      Alert.alert("Could not start", "Please try again.");
+    } finally {
+      setIsSavingAction(false);
+    }
+  };
+
+  const handleOpenMediaModal = async (item: ActionItem) => {
+    if (!userId || isSavingAction) return;
+
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert(
+          "Permission needed",
+          "Please allow photo library access to add media.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const pickedUris = result.assets
+        .map((asset) => asset.uri)
+        .filter((uri): uri is string => Boolean(uri));
+
+      if (pickedUris.length === 0) {
+        return;
+      }
+
+      const currentPhotos = item.photos || [];
+      const updatedPhotos = [...currentPhotos, ...pickedUris];
+
+      setIsSavingAction(true);
+      await updateEventRow(item.id, { photos: updatedPhotos });
+      await fetchEvents(userId);
+      Alert.alert("Media added", "Your scrapbook has been updated.");
+    } catch (err) {
+      console.error("Failed to add media:", err);
+      Alert.alert("Could not add media", "Please try again.");
+    } finally {
+      setIsSavingAction(false);
+    }
+  };
+
+  const handleCompleteBucket = async (item: ActionItem) => {
+    if (!userId || isSavingAction) return;
+    try {
+      setIsSavingAction(true);
+      await updateEventRow(item.id, {
+        is_active: false,
+        completed: true,
+        status_text: "Completed",
+      });
+      await fetchEvents(userId);
+      setActiveTab("Completed");
+    } catch (err) {
+      console.error("Failed to complete bucket:", err);
+      Alert.alert("Could not complete", "Please try again.");
+    } finally {
+      setIsSavingAction(false);
+    }
+  };
+
+  const handleOpenScrapbook = (item: ActionItem) => {
+    setSelectedScrapbookItem(item);
+    setIsScrapbookModalVisible(true);
+  };
+
+  const closeImagePreview = () => {
+    setIsImagePreviewVisible(false);
+    setSelectedImageUri(null);
+  };
+
+  const closeScrapbookModal = () => {
+    setIsScrapbookModalVisible(false);
+    setSelectedScrapbookItem(null);
+    closeImagePreview();
+  };
+
+  const handleOpenImagePreview = (uri: string) => {
+    setSelectedImageUri(uri);
+    setIsImagePreviewVisible(true);
+  };
+
   const acceptConciergeBuckets = async () => {
     if (!userId || conciergeResults.length === 0) return;
     try {
@@ -486,9 +680,15 @@ export default function GalleryScreen() {
 
   const renderItem = ({ item }: ListRenderItemInfo<ActionItem>) =>
     activeTab === "Completed" ? (
-      <CompletedCard item={item} />
+      <CompletedCard item={item} onOpenScrapbook={handleOpenScrapbook} />
     ) : (
-      <StandardCard item={item} tab={activeTab} />
+      <StandardCard
+        item={item}
+        tab={activeTab}
+        onStartBucket={handleStartBucket}
+        onAddMedia={handleOpenMediaModal}
+        onCompleteBucket={handleCompleteBucket}
+      />
     );
 
   if (isLoading) {
@@ -717,6 +917,79 @@ export default function GalleryScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        <Modal
+          visible={isScrapbookModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeScrapbookModal}
+        >
+          <TouchableWithoutFeedback onPress={closeScrapbookModal}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalCard}>
+                  <View style={styles.scrapbookHeaderRow}>
+                    <Text style={styles.modalTitle}>
+                      {selectedScrapbookItem?.title || "Scrapbook"}
+                    </Text>
+                    <TouchableOpacity onPress={closeScrapbookModal}>
+                      <X color={C.textMuted} size={18} />
+                    </TouchableOpacity>
+                  </View>
+                  {(selectedScrapbookItem?.photos || []).length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      No media yet for this bucket.
+                    </Text>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.galleryScroll}
+                    >
+                      {(selectedScrapbookItem?.photos || []).map((uri, idx) => (
+                        <TouchableOpacity
+                          key={`${uri}-${idx}`}
+                          style={styles.photoThumb}
+                          activeOpacity={0.85}
+                          onPress={() => handleOpenImagePreview(uri)}
+                        >
+                          <Image
+                            source={{ uri }}
+                            style={styles.photoImg}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={isImagePreviewVisible && !!selectedImageUri}
+          transparent
+          animationType="fade"
+          onRequestClose={closeImagePreview}
+        >
+          <TouchableWithoutFeedback onPress={closeImagePreview}>
+            <View style={styles.previewOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.previewCard}>
+                  {selectedImageUri ? (
+                    <Image
+                      source={{ uri: selectedImageUri }}
+                      style={styles.previewImage}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -775,6 +1048,39 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     backgroundColor: C.surface,
   },
+  cardActionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  cardActionBtn: {
+    marginTop: 12,
+    backgroundColor: C.accentDark,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardActionBtnSecondary: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.borderMid,
+  },
+  cardActionBtnNarrow: {
+    flex: 0.85,
+  },
+  cardActionBtnWide: {
+    flex: 1.25,
+  },
+  cardActionBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  cardActionBtnSecondaryText: {
+    color: C.accentDark,
+  },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -827,6 +1133,30 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   photoImg: { width: "100%", height: "100%" },
+  scrapbookHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  previewCard: {
+    width: "100%",
+    maxHeight: "85%",
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#111",
+  },
+  previewImage: {
+    width: "100%",
+    height: 520,
+  },
 
   conciergeFab: {
     position: "absolute",
