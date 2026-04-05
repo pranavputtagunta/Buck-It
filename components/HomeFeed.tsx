@@ -223,10 +223,10 @@ export default function HomeFeed() {
       setUserId(uid);
 
       try {
-        // 1. Fetch Context for Algorithm
+        // 1. Build the Ultimate Persona Query
         const { data: profile } = await supabase
           .from("users")
-          .select("display_name")
+          .select("display_name, interests, personality")
           .eq("id", uid)
           .single();
         if (profile) setUserName(profile.display_name);
@@ -243,12 +243,12 @@ export default function HomeFeed() {
             ),
           );
 
-        // 3. Fetch Posts
+        // 3. Fetch Posts (Scrapbook)
         const { data: postsData } = await supabase
           .from("posts")
           .select("*")
           .order("created_at", { ascending: false });
-        if (postsData)
+        if (postsData) {
           setDbPosts(
             postsData.map((p) => ({
               id: p.id,
@@ -261,6 +261,7 @@ export default function HomeFeed() {
               category: p.category,
             })),
           );
+        }
 
         // 4. Autopopulate Events from discover API
         await loadDiscoverEvents(uid);
@@ -307,7 +308,6 @@ export default function HomeFeed() {
       bounciness: 0,
     }).start();
   };
-
   const closeShareModal = () => {
     Animated.timing(shareSlideAnim, {
       toValue: SCREEN_HEIGHT,

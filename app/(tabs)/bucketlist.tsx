@@ -15,126 +15,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../../app/lib/supabase";
-import Fuse from "fuse.js";
-
-// ─── AI Fallback Dictionary ───────────────────────────────────────────────────
-
-const CATEGORY_DICTIONARY = [
-  {
-    name: "Travel & Adventure",
-    keywords: [
-      "travel",
-      "visit",
-      "trip",
-      "hike",
-      "fly",
-      "ocean",
-      "mountain",
-      "country",
-      "city",
-      "explore",
-      "skydive",
-      "surf",
-    ],
-  },
-  {
-    name: "Health & Fitness",
-    keywords: [
-      "run",
-      "gym",
-      "workout",
-      "marathon",
-      "climb",
-      "swim",
-      "weight",
-      "health",
-      "yoga",
-      "boulder",
-      "5k",
-      "10k",
-    ],
-  },
-  {
-    name: "Career & Skills",
-    keywords: [
-      "job",
-      "learn",
-      "build",
-      "project",
-      "hackathon",
-      "code",
-      "degree",
-      "certify",
-      "business",
-      "startup",
-      "language",
-    ],
-  },
-  {
-    name: "Creative & Art",
-    keywords: [
-      "draw",
-      "paint",
-      "write",
-      "music",
-      "guitar",
-      "piano",
-      "sing",
-      "dance",
-      "film",
-      "photo",
-      "book",
-    ],
-  },
-  {
-    name: "Life Milestones",
-    keywords: [
-      "buy",
-      "house",
-      "car",
-      "marry",
-      "kids",
-      "graduate",
-      "retire",
-      "invest",
-    ],
-  },
-  {
-    name: "Food & Culinary",
-    keywords: [
-      "cook",
-      "bake",
-      "eat",
-      "restaurant",
-      "chef",
-      "meal",
-      "food",
-      "sushi",
-      "steak",
-    ],
-  },
-];
-
-const fuse = new Fuse(CATEGORY_DICTIONARY, {
-  keys: ["keywords", "name"],
-  threshold: 0.3,
-  includeScore: true,
-});
-
-const inferCategories = (text: string) => {
-  const words = text.toLowerCase().split(" ");
-  let matches: any[] = [];
-
-  words.forEach((word) => {
-    if (word.length > 2) {
-      const result = fuse.search(word);
-      if (result.length > 0) matches.push(result[0].item.name);
-    }
-  });
-
-  const uniqueMatches = [...new Set(matches)].slice(0, 2);
-  return uniqueMatches.length > 0 ? uniqueMatches.join(", ") : "General";
-};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -142,6 +22,7 @@ interface BucketItem {
   id: string;
   title: string;
   category: string;
+  tags?: string[];
   deadline: string | null;
   urgency: "high" | "medium" | "low";
   completed: boolean;
@@ -231,7 +112,10 @@ function GoalCard({
     ]).start(() => onRemove(item.id));
   };
 
-  const tags = (item.category || "General").split(",").map((tag) => tag.trim());
+  const displayTags =
+    item.tags && item.tags.length > 0
+      ? item.tags
+      : [item.category || "General"];
 
   return (
     <Animated.View
@@ -267,13 +151,13 @@ function GoalCard({
             {item.title}
           </Text>
           <View style={styles.tagContainer}>
-            {tags.map((tag, idx) => (
+            {displayTags.map((tag, idx) => (
               <View
                 key={idx}
                 style={[styles.tagPill, { backgroundColor: colors.tagBg }]}
               >
                 <Text style={[styles.cardCategory, { color: colors.category }]}>
-                  {tag.toUpperCase()}
+                  {tag.toUpperCase().replace("_", " ")}
                 </Text>
               </View>
             ))}
@@ -321,11 +205,10 @@ export default function BucketListScreen() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [goals, setGoals] = useState<BucketItem[]>([]);
-
   const [inputText, setInputText] = useState("");
-  const [deadlineText, setDeadlineText] = useState(""); // Text fallback for web
-
+  const [deadlineText, setDeadlineText] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const usedSuggestions = useRef<Set<number>>(new Set());
 
@@ -342,26 +225,25 @@ export default function BucketListScreen() {
 
       const { data, error } = await supabase
         .from("bucket_list_items")
-        .select("*")
+        .select("id, title, category, tags, deadline, completed, created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Error fetching buckets:", error);
-      } else if (data) {
-        const mappedGoals: BucketItem[] = data.map((dbItem) => ({
-          id: dbItem.id,
-          title: dbItem.title,
-          category: dbItem.category || "General",
-          deadline: dbItem.deadline,
-          urgency: "low",
-          completed: dbItem.completed || false,
-        }));
-        setGoals(mappedGoals);
+      if (data) {
+        setGoals(
+          data.map((dbItem) => ({
+            id: dbItem.id,
+            title: dbItem.title,
+            category: dbItem.category || "General",
+            tags: dbItem.tags || [],
+            deadline: dbItem.deadline,
+            urgency: "low",
+            completed: dbItem.completed || false,
+          })),
+        );
       }
       setIsLoading(false);
     };
-
     loadData();
   }, []);
 
@@ -378,17 +260,14 @@ export default function BucketListScreen() {
   const toggleGoal = async (id: string) => {
     const goal = goals.find((g) => g.id === id);
     if (!goal) return;
-
     const newStatus = !goal.completed;
     setGoals((prev) =>
       prev.map((g) => (g.id === id ? { ...g, completed: newStatus } : g)),
     );
-
     const { error } = await supabase
       .from("bucket_list_items")
       .update({ completed: newStatus })
       .eq("id", id);
-
     if (error) {
       setGoals((prev) =>
         prev.map((g) => (g.id === id ? { ...g, completed: !newStatus } : g)),
@@ -399,11 +278,7 @@ export default function BucketListScreen() {
 
   const removeGoal = async (id: string) => {
     setGoals((prev) => prev.filter((g) => g.id !== id));
-    const { error } = await supabase
-      .from("bucket_list_items")
-      .delete()
-      .eq("id", id);
-    if (error) console.error("Error deleting item:", error);
+    await supabase.from("bucket_list_items").delete().eq("id", id);
   };
 
   const addGoal = async (
@@ -412,44 +287,47 @@ export default function BucketListScreen() {
     urgency: BucketItem["urgency"] = "low",
   ) => {
     if (!userId) return;
-
+    setIsAdding(true);
     const safeDeadline =
       deadlineString && isValidDate(deadlineString) ? deadlineString : null;
-    const autoCategory = inferCategories(title);
+    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-    const payload = {
-      user_id: userId,
-      title: title,
-      deadline: safeDeadline,
-      // category: autoCategory, // Uncomment this if 'category' column is added to DB!
-    };
+    try {
+      // ─── UPDATED TO NEW ROUTE ───
+      const response = await fetch(`${apiBase}/api/buckets/list-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          title: title,
+          deadline: safeDeadline,
+        }),
+      });
 
-    const { data, error } = await supabase
-      .from("bucket_list_items")
-      .insert(payload)
-      .select()
-      .single();
+      if (!response.ok) throw new Error("Failed to sync bucket item");
+      const data = await response.json();
 
-    if (error) {
-      console.error("Error adding item:", error);
-      Alert.alert("Database Error", error.message);
-    } else if (data) {
       setGoals((prev) => [
         {
           id: data.id,
           title: data.title,
-          category: autoCategory,
+          category: data.category,
+          tags: data.tags,
           deadline: data.deadline,
           urgency: urgency,
-          completed: false,
+          completed: data.completed,
         },
         ...prev,
       ]);
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setIsAdding(false);
     }
   };
 
   const handleAdd = () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isAdding) return;
     addGoal(inputText.trim(), deadlineText.trim());
     setInputText("");
     setDeadlineText("");
@@ -458,7 +336,6 @@ export default function BucketListScreen() {
   const handleAISuggest = () => {
     if (aiLoading) return;
     setAiLoading(true);
-
     const pool = AI_SUGGESTIONS.filter(
       (_, i) => !usedSuggestions.current.has(i),
     );
@@ -467,15 +344,12 @@ export default function BucketListScreen() {
       setAiLoading(false);
       return;
     }
-
     const idx = Math.floor(Math.random() * pool.length);
     const pick = pool[idx];
     usedSuggestions.current.add(AI_SUGGESTIONS.indexOf(pick));
-
-    setTimeout(() => {
-      addGoal(pick.title, pick.deadline, pick.urgency);
-      setAiLoading(false);
-    }, 700);
+    addGoal(pick.title, pick.deadline, pick.urgency).then(() =>
+      setAiLoading(false),
+    );
   };
 
   const handleFindPlan = (item: BucketItem) => {
@@ -515,7 +389,6 @@ export default function BucketListScreen() {
           <Text style={styles.subtitle}>
             Life is too short to leave it blank
           </Text>
-
           <View style={styles.progressSection}>
             <View style={styles.progressLabels}>
               <Text style={styles.progressLabel}>
@@ -536,7 +409,6 @@ export default function BucketListScreen() {
           </View>
         </View>
 
-        {/* ── Web-Safe Input Card ── */}
         <View style={styles.inputArea}>
           <View style={styles.inputCard}>
             <TextInput
@@ -545,6 +417,7 @@ export default function BucketListScreen() {
               placeholderTextColor="#a09890"
               value={inputText}
               onChangeText={setInputText}
+              editable={!isAdding}
             />
             <View style={styles.inputRowBottom}>
               <TextInput
@@ -555,21 +428,26 @@ export default function BucketListScreen() {
                 onChangeText={setDeadlineText}
                 onSubmitEditing={handleAdd}
                 returnKeyType="done"
+                editable={!isAdding}
               />
               <TouchableOpacity
                 onPress={handleAdd}
                 activeOpacity={0.7}
                 style={styles.addBtn}
-                disabled={!inputText.trim()}
+                disabled={!inputText.trim() || isAdding}
               >
-                <Text
-                  style={[
-                    styles.addBtnText,
-                    !inputText.trim() && { color: "#c8c0b6" },
-                  ]}
-                >
-                  +
-                </Text>
+                {isAdding ? (
+                  <ActivityIndicator size="small" color="#6b6055" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.addBtnText,
+                      !inputText.trim() && { color: "#c8c0b6" },
+                    ]}
+                  >
+                    +
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -622,8 +500,6 @@ export default function BucketListScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f7f5f2" },
   container: { flex: 1, backgroundColor: "#f7f5f2" },
@@ -666,8 +542,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#7a6e62",
     borderRadius: 99,
   },
-
-  // Updated Web-Safe Input Styles
   inputArea: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 10 },
   inputCard: {
     backgroundColor: "#ffffff",
@@ -712,7 +586,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     fontWeight: "300",
   },
-
   actionsRow: { paddingHorizontal: 24, marginBottom: 8 },
   aiBtn: {
     alignSelf: "flex-start",
@@ -749,7 +622,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: "italic",
   },
-
   card: { borderRadius: 16, borderWidth: 1, overflow: "hidden", padding: 13 },
   cardCompleted: { opacity: 0.7 },
   cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 11 },
@@ -772,7 +644,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cardTitleDone: { textDecorationLine: "line-through", color: "#bbb4aa" },
-
   tagContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -781,7 +652,6 @@ const styles = StyleSheet.create({
   },
   tagPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   cardCategory: { fontSize: 9, fontWeight: "800", letterSpacing: 0.5 },
-
   removeBtn: {
     width: 26,
     height: 26,
