@@ -32,15 +32,41 @@ export default function OnboardingFlow({ onComplete }: { onComplete: () => void 
     }).start();
   }, [step]);
 
+  // ─── LOGIC: Returning User ───
+  const handleSignIn = async () => {
+    try {
+      setIsSubmitting(true);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: draft.email.trim(),
+        password: draft.password,
+      });
+
+      if (error) throw error;
+
+      // Successfully signed in
+      onComplete();
+    } catch (err: any) {
+      Alert.alert('Sign In Failed', err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ─── LOGIC: New User ───
   const handleCreateAccount = async () => {
     try {
       setIsSubmitting(true);
       const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+      
+      // 1. Supabase Auth Sign Up
       const { data, error } = await supabase.auth.signUp({
         email: draft.email.trim(),
         password: draft.password,
       });
+
       if (error) throw error;
+
+      // 2. Sync Profile to Backend
       const response = await fetch(`${apiBase}/api/users/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,15 +75,17 @@ export default function OnboardingFlow({ onComplete }: { onComplete: () => void 
           username: draft.username.trim(),
           personality: draft.personality.trim(),
           location: draft.location.trim(),
-          hobbies: draft.hobbiesInput.split(',').map(h => h.trim()),
+          hobbies: draft.hobbiesInput.split(',').map(h => h.trim()).filter(h => h !== ""),
           bucket_list: draft.bucketList,
           onboarding_data: {},
         }),
       });
+
       if (!response.ok) throw new Error('Backend sync failed');
+      
       onComplete();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      Alert.alert('Sign Up Error', err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -68,8 +96,14 @@ export default function OnboardingFlow({ onComplete }: { onComplete: () => void 
       case 0:
         return (
           <WelcomeStep
-            onNewUser={() => setStep(1)}
-            onReturningUser={() => { setDraft(d => ({ ...d, mode: 'returning' })); setStep(3); }}
+            onNewUser={() => {
+              setDraft(d => ({ ...d, mode: 'new' }));
+              setStep(1);
+            }}
+            onReturningUser={() => {
+              setDraft(d => ({ ...d, mode: 'returning' }));
+              setStep(3); // Skip Vibe/Bucket steps for returning users
+            }}
           />
         );
       case 1:
@@ -112,7 +146,8 @@ export default function OnboardingFlow({ onComplete }: { onComplete: () => void 
             onChangeUsername={v => setDraft(d => ({ ...d, username: v }))}
             onChangeEmail={v => setDraft(d => ({ ...d, email: v }))}
             onChangePassword={v => setDraft(d => ({ ...d, password: v }))}
-            onSubmit={handleCreateAccount}
+            // Switch function based on mode
+            onSubmit={draft.mode === 'new' ? handleCreateAccount : handleSignIn}
             submitting={isSubmitting}
           />
         );
@@ -152,7 +187,7 @@ export default function OnboardingFlow({ onComplete }: { onComplete: () => void 
 }
 
 const styles = StyleSheet.create({
-  safe:          { flex: 1, backgroundColor: C.bg },
+  safe:           { flex: 1, backgroundColor: C.bg },
   scrollContent: { padding: 28, paddingTop: 44, paddingBottom: 110, flexGrow: 1, justifyContent: 'center' },
   pillRow: {
     flexDirection: 'row',
