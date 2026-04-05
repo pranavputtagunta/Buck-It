@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,33 +7,22 @@ import {
   FlatList,
   ListRenderItemInfo,
   SafeAreaView,
-  Animated,
   Image,
   ScrollView,
   LayoutAnimation,
+  ActivityIndicator,
 } from 'react-native';
 import { Users, Camera, Sparkles, ChevronDown, ChevronUp, Award } from 'lucide-react-native';
+import { supabase } from '../../app/lib/supabase';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
-  bg:          '#f7f5f2',
-  surface:     '#ffffff',
-  border:      '#e8e3dc',
-  borderMid:   '#ddd6cc',
-  textPrimary: '#1a1814',
-  textMuted:   '#a09890',
-  textLight:   '#c0b9b0',
-  accent:      '#7a6e62',
-  accentDark:  '#3a342e',
-  accentLight: '#ede9e3',
-  green:       '#4a7c59',
-  greenBg:     '#f0f7f2',
-  greenBorder: '#c8dfd0',
-  amber:       '#9a7020',
-  amberBg:     '#fdf8f0',
-  amberBorder: '#eddfbf',
-  red:         '#b84030',
-  redBg:       '#fff5f3',
+  bg:          '#f7f5f2', surface:     '#ffffff', border:      '#e8e3dc',
+  borderMid:   '#ddd6cc', textPrimary: '#1a1814', textMuted:   '#a09890',
+  textLight:   '#c0b9b0', accent:      '#7a6e62', accentDark:  '#3a342e',
+  accentLight: '#ede9e3', green:       '#4a7c59', greenBg:     '#f0f7f2',
+  greenBorder: '#c8dfd0', amber:       '#9a7020', amberBg:     '#fdf8f0',
+  amberBorder: '#eddfbf', red:         '#b84030', redBg:       '#fff5f3',
   redBorder:   '#f2d0c8',
 };
 
@@ -50,64 +39,13 @@ interface ActionItem {
   photos?: string[];
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const MOCK_DATA: Record<TabType, ActionItem[]> = {
-  Planned: [
-    {
-      id: '1',
-      title: 'Sunset Kayaking at La Jolla',
-      statusText: 'Awaiting RSVPs — AI handling invites',
-      participants: 4,
-    },
-  ],
-  Active: [
-    {
-      id: '2',
-      title: 'UCSD Hackathon Team-up',
-      statusText: 'Happening now — drop photos here!',
-      participants: 3,
-    },
-  ],
-  Completed: [
-    {
-      id: '3',
-      title: 'Torrey Pines Morning Hike',
-      statusText: 'Scrapbook generated · Badges awarded',
-      participants: 6,
-      hasBadge: true,
-      photos: [
-        'https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=400&auto=format&fit=crop',
-      ],
-    },
-    {
-      id: '4',
-      title: 'Intro to Robotics Workshop',
-      statusText: 'Scrapbook generated',
-      participants: 12,
-      hasBadge: false,
-      photos: [
-        'https://images.unsplash.com/photo-1535378917042-10a22c95931a?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1563207153-f403bf289163?q=80&w=400&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=400&auto=format&fit=crop',
-      ],
-    },
-  ],
-};
-
-// ─── Tab config ───────────────────────────────────────────────────────────────
 const TAB_CONFIG = {
-  Planned:   { color: C.amber,  bg: C.amberBg,  border: C.amberBorder,  icon: (c: string) => <Users   size={18} color={c} />, label: 'Planned'   },
-  Active:    { color: C.red,    bg: C.redBg,    border: C.redBorder,    icon: (c: string) => <Camera  size={18} color={c} />, label: 'Active'    },
-  Completed: { color: C.green,  bg: C.greenBg,  border: C.greenBorder,  icon: (c: string) => <Sparkles size={18} color={c} />, label: 'Completed' },
+  Planned:   { color: C.amber, bg: C.amberBg, border: C.amberBorder, icon: (c: string) => <Users   size={18} color={c} />, label: 'Planned'   },
+  Active:    { color: C.red,   bg: C.redBg,   border: C.redBorder,   icon: (c: string) => <Camera  size={18} color={c} />, label: 'Active'    },
+  Completed: { color: C.green, bg: C.greenBg, border: C.greenBorder, icon: (c: string) => <Sparkles size={18} color={c} />, label: 'Completed' },
 };
 
-// ─── Completed Card (with expandable gallery) ─────────────────────────────────
+// ─── Completed Card ───────────────────────────────────────────────────────────
 function CompletedCard({ item }: { item: ActionItem }) {
   const [open, setOpen] = useState(false);
   const cfg = TAB_CONFIG.Completed;
@@ -119,7 +57,6 @@ function CompletedCard({ item }: { item: ActionItem }) {
 
   return (
     <View style={[styles.card, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
-      {/* Top row */}
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
           <Text style={styles.cardTitle}>{item.title}</Text>
@@ -130,7 +67,6 @@ function CompletedCard({ item }: { item: ActionItem }) {
         </View>
       </View>
 
-      {/* Pills row */}
       <View style={styles.pillsRow}>
         <View style={[styles.pill, { backgroundColor: C.accentLight, borderColor: C.borderMid }]}>
           <Users size={11} color={C.accent} style={{ marginRight: 4 }} />
@@ -143,31 +79,18 @@ function CompletedCard({ item }: { item: ActionItem }) {
           </View>
         )}
         {item.photos && item.photos.length > 0 && (
-          <TouchableOpacity
-            style={[styles.pill, styles.pillTouchable, { backgroundColor: cfg.bg, borderColor: cfg.border }]}
-            onPress={toggle}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={[styles.pill, { backgroundColor: cfg.bg, borderColor: cfg.border }]} onPress={toggle} activeOpacity={0.7}>
             <Camera size={11} color={cfg.color} style={{ marginRight: 4 }} />
-            <Text style={[styles.pillText, { color: cfg.color }]}>
-              {item.photos.length} photos
-            </Text>
-            {open
-              ? <ChevronUp   size={11} color={cfg.color} style={{ marginLeft: 3 }} />
-              : <ChevronDown size={11} color={cfg.color} style={{ marginLeft: 3 }} />}
+            <Text style={[styles.pillText, { color: cfg.color }]}>{item.photos.length} photos</Text>
+            {open ? <ChevronUp size={11} color={cfg.color} style={{ marginLeft: 3 }} /> : <ChevronDown size={11} color={cfg.color} style={{ marginLeft: 3 }} />}
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Expandable photo gallery */}
       {open && item.photos && (
         <View style={styles.galleryWrap}>
           <View style={styles.galleryDivider} />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.galleryScroll}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryScroll}>
             {item.photos.map((uri, idx) => (
               <View key={idx} style={styles.photoThumb}>
                 <Image source={{ uri }} style={styles.photoImg} resizeMode="cover" />
@@ -207,23 +130,94 @@ function StandardCard({ item, tab }: { item: ActionItem; tab: TabType }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function GalleryScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('Planned');
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // State for each category
+  const [plannedEvents, setPlannedEvents] = useState<ActionItem[]>([]);
+  const [activeEvents, setActiveEvents] = useState<ActionItem[]>([]);
+  const [completedEvents, setCompletedEvents] = useState<ActionItem[]>([]);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching events:", error);
+      } else if (data) {
+        const planned: ActionItem[] = [];
+        const active: ActionItem[] = [];
+        const completed: ActionItem[] = [];
+
+        data.forEach(dbItem => {
+          const mappedItem: ActionItem = {
+            id: dbItem.id,
+            title: dbItem.title,
+            statusText: dbItem.status_text || 'No status',
+            participants: dbItem.participants || 1,
+            hasBadge: dbItem.has_badge,
+            photos: dbItem.photos || [],
+          };
+
+          // Categorization Logic
+          if (dbItem.completed) {
+            completed.push(mappedItem);
+          } else if (dbItem.is_active) {
+            active.push(mappedItem);
+          } else {
+            planned.push(mappedItem);
+          }
+        });
+
+        setPlannedEvents(planned);
+        setActiveEvents(active);
+        setCompletedEvents(completed);
+      }
+      setIsLoading(false);
+    };
+
+    fetchEvents();
+  }, []);
+
+  const getActiveData = () => {
+    switch (activeTab) {
+      case 'Planned': return plannedEvents;
+      case 'Active': return activeEvents;
+      case 'Completed': return completedEvents;
+      default: return [];
+    }
+  };
 
   const renderItem = ({ item }: ListRenderItemInfo<ActionItem>) =>
     activeTab === 'Completed'
       ? <CompletedCard item={item} />
       : <StandardCard  item={item} tab={activeTab} />;
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#000" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.eyebrow}>OVERVIEW</Text>
           <Text style={styles.headerTitle}>Action Center</Text>
         </View>
 
-        {/* Tab switcher */}
         <View style={styles.tabBar}>
           {TABS.map(tab => {
             const active = activeTab === tab;
@@ -235,23 +229,20 @@ export default function GalleryScreen() {
                 onPress={() => setActiveTab(tab)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.tabText, active && { color: cfg.color, fontWeight: '700' }]}>
-                  {tab}
-                </Text>
+                <Text style={[styles.tabText, active && { color: cfg.color, fontWeight: '700' }]}>{tab}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* List */}
         <FlatList
-          data={MOCK_DATA[activeTab]}
+          data={getActiveData()}
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>Nothing here yet.</Text>
+            <Text style={styles.emptyText}>No {activeTab.toLowerCase()} events right now.</Text>
           }
         />
       </View>
@@ -263,90 +254,26 @@ export default function GalleryScreen() {
 const styles = StyleSheet.create({
   safe:      { flex: 1, backgroundColor: C.bg },
   container: { flex: 1, backgroundColor: C.bg },
-
   header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4 },
   eyebrow: { fontSize: 10, fontWeight: '600', letterSpacing: 1.4, color: C.textLight, marginBottom: 4 },
   headerTitle: { fontSize: 30, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.6 },
-
-  // Tabs
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderColor: C.border,
-    marginTop: 16,
-    backgroundColor: C.bg,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 13,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderColor: C.border, marginTop: 16, backgroundColor: C.bg },
+  tab: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabText: { fontSize: 13, fontWeight: '500', color: C.textMuted, letterSpacing: 0.1 },
-
-  // List
   list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
   emptyText: { textAlign: 'center', marginTop: 48, color: C.textLight, fontSize: 14, fontStyle: 'italic' },
-
-  // Card
-  card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 14,
-    backgroundColor: C.surface,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
+  card: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 14, backgroundColor: C.surface },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   cardHeaderLeft: { flex: 1, marginRight: 12 },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.textPrimary,
-    letterSpacing: -0.3,
-    marginBottom: 5,
-    lineHeight: 22,
-  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.3, marginBottom: 5, lineHeight: 22 },
   cardStatus: { fontSize: 12, fontWeight: '500', letterSpacing: 0.1, lineHeight: 18 },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Pills
+  iconWrap: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 99,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  pillTouchable: {},
+  pill: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5 },
   pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
-
-  // Gallery
   galleryWrap: { marginTop: 14 },
   galleryDivider: { height: 1, backgroundColor: C.border, marginBottom: 14 },
   galleryScroll: { paddingBottom: 2 },
-  photoThumb: {
-    width: 110,
-    height: 110,
-    borderRadius: 12,
-    marginRight: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
+  photoThumb: { width: 110, height: 110, borderRadius: 12, marginRight: 10, overflow: 'hidden', borderWidth: 1, borderColor: C.border },
   photoImg: { width: '100%', height: '100%' },
 });

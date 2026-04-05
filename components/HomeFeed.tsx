@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Dimensions,
   LayoutAnimation,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -115,6 +116,16 @@ export default function HomeFeed() {
   const [activeFilterIds, setActiveFilterIds] = useState<string[]>([]);
   const slideAnim = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
+  // ─── NEW STATE FOR LOCK IT IN ───
+  const [userId, setUserId] = useState<string | null>(null);
+  const [lockingId, setLockingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUserId(session.user.id);
+    });
+  }, []);
+
   const handleLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -141,6 +152,71 @@ export default function HomeFeed() {
 
   const toggleFilter = (id: string) => {
     setActiveFilterIds(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+  };
+
+  // ─── THE DATABASE LOGIC ───
+  const handleLockItIn = async (item: EventItem) => {
+    if (!userId) {
+      Alert.alert("Error", "You need to be logged in to lock in an event.");
+      return;
+    }
+
+    setLockingId(item.id);
+
+    try {
+      // 1. Create the Group Chat based on the Event title
+      const { data: chatData, error: chatError } = await supabase
+        .from('chats')
+        .insert({ title: item.title })
+        .select()
+        .single();
+
+      if (chatError) throw chatError;
+      const newChatId = chatData.id;
+
+      // 2. Fetch ~8 Random Dummy Users
+      const { data: randomUsers } = await supabase
+        .from('users')
+        .select('id')
+        .neq('id', userId)
+        .limit(8);
+
+      // 3. Build Participant Array (You + Dummies)
+      const participantsToInsert = [{ chat_id: newChatId, user_id: userId }];
+      if (randomUsers) {
+        randomUsers.forEach(u => {
+          participantsToInsert.push({ chat_id: newChatId, user_id: u.id });
+        });
+      }
+
+      // 4. Insert Participants
+      const { error: partError } = await supabase
+        .from('chat_participants')
+        .insert(participantsToInsert);
+
+      if (partError) throw partError;
+
+      // 5. Send initial AI Message
+      await supabase.from('chat_messages').insert({
+        chat_id: newChatId,
+        user_id: null,
+        sender_name: "Buck-it Agent",
+        text: `Group created for **${item.title}**! I'm currently scanning everyone's Availability Matrix to suggest the best times. ✨`,
+        type: 'ai'
+      });
+
+      // 6. Push to Chat
+      router.push({
+        pathname: '/chat/[id]',
+        params: { id: newChatId, title: item.title }
+      });
+
+    } catch (error: any) {
+      console.error("Lock It In Error:", error);
+      Alert.alert("Error", "Could not create the group chat.");
+    } finally {
+      setLockingId(null);
+    }
   };
 
   const displayedEvents = activeFilterIds.length > 0
@@ -184,8 +260,17 @@ export default function HomeFeed() {
         <View style={styles.deadlineBadge}>
           <Text style={styles.deadlineText}>{item.deadline}</Text>
         </View>
-        <TouchableOpacity style={styles.lockBtn} activeOpacity={0.75}>
-          <Text style={styles.lockBtnText}>Lock it in</Text>
+        <TouchableOpacity 
+          style={styles.lockBtn} 
+          activeOpacity={0.75}
+          onPress={() => handleLockItIn(item)}
+          disabled={lockingId === item.id}
+        >
+          {lockingId === item.id ? (
+            <ActivityIndicator color={C.accentDark} size="small" />
+          ) : (
+            <Text style={styles.lockBtnText}>Lock it in</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -456,6 +541,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.accentLight,
     borderWidth: 1, borderColor: C.borderMid,
     paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+    height: 48, justifyContent: 'center'
   },
   lockBtnText: { color: C.accentDark, fontWeight: '700', fontSize: 14, letterSpacing: 0.1 },
 

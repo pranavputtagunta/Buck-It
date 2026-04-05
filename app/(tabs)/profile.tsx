@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import { Settings, Bell, Lock, CircleHelp, LogOut, Sparkles, Calendar, Trash2, Zap } from 'lucide-react-native';
+import { supabase } from '../../app/lib/supabase';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
   bg: '#f7f5f2', surface: '#ffffff', border: '#e8e3dc', borderMid: '#ddd6cc',
   textPrimary: '#1a1814', textMuted: '#a09890', textLight: '#c0b9b0',
   accent: '#7a6e62', accentDark: '#3a342e', accentLight: '#ede9e3',
-  available: '#34C759', // When2meet Green
+  available: '#34C759', 
   availableLight: '#E5F9EB', 
 };
 
@@ -31,7 +32,6 @@ const DAYS = [
   { id: 'Sun', label: 'S' },
 ];
 
-// Generate hours from 6 AM to 11 PM (23:00)
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
 const formatHour = (h: number) => {
@@ -43,6 +43,55 @@ const formatHour = (h: number) => {
 export default function ProfileScreen() {
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Auth & Profile State
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>('Loading...');
+
+  // ─── Fetch Data on Load ───
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        
+        const uid = session.user.id;
+        setUserId(uid);
+
+        // 1. Fetch Profile Name
+        const { data: profile } = await supabase
+          .from('users')
+          .select('display_name')
+          .eq('id', uid)
+          .single();
+          
+        if (profile?.display_name) {
+          setUserName(profile.display_name);
+        } else {
+          setUserName('Bucket User');
+        }
+
+        // 2. Fetch Availability Matrix
+        const { data: availability } = await supabase
+          .from('availabilities')
+          .select('available_slots')
+          .eq('user_id', uid)
+          .single();
+
+        if (availability?.available_slots) {
+          setSelectedSlots(new Set(availability.available_slots));
+        }
+
+      } catch (error) {
+        console.error("Failed to load profile data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   // ─── Grid Logic ───
   const toggleSlot = (dayId: string, hour: number) => {
@@ -55,63 +104,57 @@ export default function ProfileScreen() {
     });
   };
 
-  // Quick Action: 9 to 5 Weekdays
-const fillSocialHours = () => {
-  const newSlots = new Set(selectedSlots);
-  
-  DAYS.forEach(day => {
-    if (day.id === 'Sat' || day.id === 'Sun') {
-      // Weekends: Free from 9 AM to 10 PM
-      for (let h = 9; h <= 22; h++) {
-        newSlots.add(`${day.id}-${h}`);
+  const fillSocialHours = () => {
+    const newSlots = new Set(selectedSlots);
+    DAYS.forEach(day => {
+      if (day.id === 'Sat' || day.id === 'Sun') {
+        for (let h = 9; h <= 22; h++) newSlots.add(`${day.id}-${h}`);
+      } else {
+        for (let h = 17; h <= 22; h++) newSlots.add(`${day.id}-${h}`);
       }
-    } else {
-      // Weekdays: Free from 5 PM (17:00) to 10 PM
-      for (let h = 17; h <= 22; h++) {
-        newSlots.add(`${day.id}-${h}`);
-      }
-    }
-  });
-  
-  setSelectedSlots(newSlots);
-};
+    });
+    setSelectedSlots(newSlots);
+  };
 
-  // Quick Action: Clear All
   const clearAll = () => {
     setSelectedSlots(new Set());
   };
 
+  // ─── Save to Supabase ───
   const saveAvailability = async () => {
+    if (!userId) return;
     setIsSaving(true);
+    
     try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
       const slotsArray = Array.from(selectedSlots);
       
-      const res = await fetch(`${apiBase}/api/users/availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: "your_user_id", // Replace with real auth ID
-          available_slots: slotsArray 
-        })
-      });
+      // Upsert: Updates if row exists, inserts if it doesn't
+      const { error } = await supabase
+        .from('availabilities')
+        .upsert({ 
+          user_id: userId, 
+          available_slots: slotsArray,
+          updated_at: new Date().toISOString()
+        });
 
-      if (!res.ok) throw new Error('Failed to save schedule');
+      if (error) throw error;
       
-      setTimeout(() => {
-        setIsSaving(false);
-        Alert.alert("Schedule Locked", "Buck-it AI will use this matrix to auto-suggest event times! ✨");
-      }, 500);
+      Alert.alert("Schedule Locked", "Buck-it AI will use this matrix to auto-suggest event times! ✨");
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      Alert.alert("Error", err.message || "Could not sync availability.");
+    } finally {
       setIsSaving(false);
-      Alert.alert("Error", "Could not sync availability.");
     }
   };
 
-  const SettingsRow = ({ icon, title, isDestructive = false }: any) => (
-    <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7}>
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const SettingsRow = ({ icon, title, isDestructive = false, onPress }: any) => (
+    <TouchableOpacity style={styles.settingsRow} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.settingsRowLeft}>
         {icon}
         <Text style={[styles.settingsRowTitle, isDestructive && { color: '#FF3B30' }]}>{title}</Text>
@@ -120,6 +163,14 @@ const fillSocialHours = () => {
     </TouchableOpacity>
   );
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#000" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -127,10 +178,10 @@ const fillSocialHours = () => {
         {/* Header Profile Info */}
         <View style={styles.header}>
           <View style={styles.avatarLarge}>
-            <Text style={styles.avatarTextLarge}>NE</Text>
+            <Text style={styles.avatarTextLarge}>{userName.substring(0, 2).toUpperCase()}</Text>
           </View>
-          <Text style={styles.userName}>Neil</Text>
-          <Text style={styles.userHandle}>@neil_bucket</Text>
+          <Text style={styles.userName}>{userName}</Text>
+          <Text style={styles.userHandle}>@{userName.toLowerCase().replace(/\s+/g, '_')}</Text>
           <TouchableOpacity style={styles.editProfileBtn}>
             <Text style={styles.editProfileText}>Edit Profile</Text>
           </TouchableOpacity>
@@ -146,12 +197,11 @@ const fillSocialHours = () => {
             <Text style={styles.cardSubtitle}>Tap the hourly blocks when you're generally free.</Text>
           </View>
 
-          {/* Quick Actions */}
           <View style={styles.quickActionsRow}>
-<TouchableOpacity style={styles.quickActionBtn} onPress={fillSocialHours}>
-  <Zap color={C.accentDark} size={14} style={{ marginRight: 4 }} />
-  <Text style={styles.quickActionText}>Nights & Weekends</Text>
-</TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionBtn} onPress={fillSocialHours}>
+              <Zap color={C.accentDark} size={14} style={{ marginRight: 4 }} />
+              <Text style={styles.quickActionText}>Nights & Weekends</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[styles.quickActionBtn, { backgroundColor: '#FFF0F0', borderColor: '#FFD6D6' }]} onPress={clearAll}>
               <Trash2 color="#FF3B30" size={14} style={{ marginRight: 4 }} />
               <Text style={[styles.quickActionText, { color: '#FF3B30' }]}>Clear</Text>
@@ -160,7 +210,6 @@ const fillSocialHours = () => {
 
           {/* THE GRID */}
           <View style={styles.gridWrapper}>
-            {/* Header Row (Days) */}
             <View style={styles.gridRowHeader}>
               <View style={styles.timeLabelCell} />
               {DAYS.map((day, i) => (
@@ -170,15 +219,11 @@ const fillSocialHours = () => {
               ))}
             </View>
 
-            {/* Time Rows */}
             {HOURS.map((hour) => (
               <View key={hour} style={styles.gridRow}>
-                {/* Time Label */}
                 <View style={styles.timeLabelCell}>
                   <Text style={styles.timeLabelText}>{formatHour(hour)}</Text>
                 </View>
-                
-                {/* Interactive Cells */}
                 {DAYS.map((day) => {
                   const slotKey = `${day.id}-${hour}`;
                   const isSelected = selectedSlots.has(slotKey);
@@ -220,7 +265,7 @@ const fillSocialHours = () => {
           <View style={styles.settingsCard}>
             <SettingsRow icon={<CircleHelp size={20} color={C.textPrimary} />} title="Help Center" />
             <View style={styles.divider} />
-            <SettingsRow icon={<LogOut size={20} color="#FF3B30" />} title="Log Out" isDestructive />
+            <SettingsRow icon={<LogOut size={20} color="#FF3B30" />} title="Log Out" isDestructive onPress={handleLogout} />
           </View>
         </View>
 
@@ -234,7 +279,6 @@ const ChevronRight = ({ color, size }: any) => <Text style={{ color, fontSize: s
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   content: { padding: 16, paddingBottom: 60 },
-  
   header: { alignItems: 'center', marginBottom: 30, paddingTop: 20 },
   avatarLarge: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.accentLight, borderWidth: 2, borderColor: C.borderMid, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   avatarTextLarge: { fontSize: 28, fontWeight: '800', color: C.accentDark, letterSpacing: 1 },
@@ -242,35 +286,25 @@ const styles = StyleSheet.create({
   userHandle: { fontSize: 15, color: C.textMuted, marginTop: 2, marginBottom: 16 },
   editProfileBtn: { backgroundColor: C.surface, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: C.border },
   editProfileText: { fontSize: 14, fontWeight: '700', color: C.textPrimary },
-
   card: { backgroundColor: C.surface, borderRadius: 24, padding: 20, marginBottom: 30, borderWidth: 1, borderColor: C.border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
   cardHeader: { marginBottom: 16 },
   cardTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary },
   cardSubtitle: { fontSize: 14, color: C.textMuted, marginTop: 6, lineHeight: 20 },
-  
-  // Quick Actions
   quickActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   quickActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg, borderWidth: 1, borderColor: C.borderMid, paddingVertical: 10, borderRadius: 12 },
   quickActionText: { fontSize: 13, fontWeight: '700', color: C.accentDark },
-
-  // Grid Styles
   gridWrapper: { borderWidth: 1, borderColor: C.borderMid, borderRadius: 12, overflow: 'hidden', backgroundColor: C.bg },
   gridRowHeader: { flexDirection: 'row', height: 36, backgroundColor: C.surface },
-  gridRow: { flexDirection: 'row', height: 32 }, // Tighter row height for mobile
+  gridRow: { flexDirection: 'row', height: 32 },
   timeLabelCell: { width: 50, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 8, borderRightWidth: 1, borderColor: C.borderMid, backgroundColor: C.surface },
   timeLabelText: { fontSize: 10, fontWeight: '600', color: C.textMuted },
   dayHeaderCell: { flex: 1, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 1, borderRightWidth: 1, borderColor: C.borderMid, backgroundColor: C.surface },
   dayHeaderText: { fontSize: 12, fontWeight: '800', color: C.textPrimary },
-  
-  // Interactive Cells
   gridCell: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: C.borderMid },
   gridCellInactive: { backgroundColor: C.surface },
   gridCellActive: { backgroundColor: C.available },
-
   saveBtn: { backgroundColor: '#000', borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-
-  // Settings List
   settingsGroup: { marginBottom: 24 },
   groupLabel: { fontSize: 12, fontWeight: '700', color: C.textMuted, letterSpacing: 1, marginLeft: 16, marginBottom: 8 },
   settingsCard: { backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
