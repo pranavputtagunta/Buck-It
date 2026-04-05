@@ -1,12 +1,28 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from database import supabase
+from auth import get_current_user_id, require_matching_user
 from browser_use_sdk.v3 import AsyncBrowserUse
+from database import supabase
 from services.llm_service import llm # Your centralized Gemini class
 from schemas import PlanBucketRequest, PlannedBucketCard, BucketDisplay
 
 router = APIRouter(prefix="/api/concierge", tags=["AI Concierge (Browser Use)"])
+
+
+def get_user_location(user_id: str) -> str:
+    user_response = (
+        supabase.table("users")
+        .select("location")
+        .eq("id", user_id)
+        .execute()
+    )
+
+    if user_response.data:
+        return user_response.data[0].get("location", "San Diego")
+
+    return "San Diego"
 
 
 async def run_browser_use_plan(request_text: str, location: str) -> str:
@@ -33,13 +49,15 @@ def format_bucket_cards(raw_scraped_data: str):
     return llm.generate_structured_response(
         system_instruction=system_prompt,
         user_prompt=raw_scraped_data,
-        response_schema=list[PlannedBucketCard]
+        response_schema=list[BucketDisplay]
     )
 
 @router.post("/plan-bucket")
-async def plan_bucket(request: PlanBucketRequest):
+async def plan_bucket(request: PlanBucketRequest, auth_user_id: str = Depends(get_current_user_id)):
     try:
-        user_location = supabase.table("users").select("location").eq("id", request.user_id).execute().data[0].get("location", "San Diego")
+        require_matching_user(auth_user_id, request.user_id)
+        user_location = get_user_location(request.user_id)
+
         raw_scraped_data = await run_browser_use_plan(request.request_text, user_location)
         formatted_bucket = format_bucket_cards(raw_scraped_data)
 

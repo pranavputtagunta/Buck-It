@@ -1,50 +1,77 @@
 # Bucket Backend
 
-FastAPI backend for onboarding, bucket list items, buckets, and planning.
+FastAPI backend for users, bucket lists, buckets, invitations, onboarding, and AI planning.
 
-## Endpoints
+## Current Routes
 
+- `GET /`
 - `GET /health`
-- `POST /api/onboard`
-- `GET /api/bucket-list-items`
-- `POST /api/bucket-list-items`
-- `GET /api/buckets`
-- `POST /api/buckets`
-- `POST /api/plan-bucket`
+- `POST /api/onboard/`
+- `GET /api/users/{user_id}`
+- `POST /api/users/`
+- `PATCH /api/users/{user_id}`
+- `PATCH /api/users/{user_id}/badges`
+- `POST /api/bucket-list/`
+- `GET /api/bucket-list/{user_id}`
+- `GET /api/bucket-list/item/{item_id}`
+- `PATCH /api/bucket-list/{item_id}`
+- `DELETE /api/bucket-list/{item_id}`
+- `GET /api/buckets/`
+- `GET /api/buckets/feed/global`
+- `GET /api/buckets/discover/{user_id}`
+- `GET /api/buckets/user/{user_id}`
+- `GET /api/buckets/{bucket_id}`
+- `POST /api/buckets/`
+- `POST /api/buckets/{bucket_id}/join`
+- `PATCH /api/buckets/{bucket_id}`
+- `PATCH /api/buckets/{bucket_id}/status`
+- `DELETE /api/buckets/{bucket_id}`
+- `DELETE /api/buckets/{bucket_id}/members/{member_user_id}`
+- `GET /api/bucket-comments/bucket/{bucket_id}`
+- `POST /api/bucket-comments/`
+- `PATCH /api/bucket-comments/{comment_id}`
+- `DELETE /api/bucket-comments/{comment_id}`
+- `GET /api/bucket-media/bucket/{bucket_id}`
+- `POST /api/bucket-media/`
+- `DELETE /api/bucket-media/{media_id}`
+- `POST /api/bucket-invitations/`
+- `GET /api/bucket-invitations/user/{user_id}`
+- `PATCH /api/bucket-invitations/{invitation_id}`
+- `DELETE /api/bucket-invitations/{invitation_id}`
+- `POST /api/concierge/plan-bucket`
+- `POST /api/plan-bucket-from-list`
 
 ## Setup
 
 1. Install `backend/requirements.txt`.
 2. Fill in `backend/.env`.
-3. Apply `backend/supabase/schema.sql` in Supabase.
-4. Run `uvicorn app.main:app --reload` from the `backend` folder.
+3. Run [backend/schema.sql](backend/schema.sql) in Supabase to create the required tables.
+4. Run the API from the `backend` folder.
 
-## What You Need To Fill In
+## Environment Variables
 
-### Required now
+### Required
 
-- `SUPABASE_URL`: Supabase project URL
-- `SUPABASE_ANON_KEY`: Supabase anon public key
-- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`
+- `GEMINI_API_KEY`
+- `BROWSER_USE_API_KEY`
 
-### Required for real AI
+## Authentication
 
-- `GEMINI_API_KEY`: Gemini API key
+- All `/api/*` routes that act on user data now expect `Authorization: Bearer <supabase-access-token>`.
+- The backend resolves the authenticated user from the Supabase access token and rejects requests where the token user does not match the `user_id`, `actor_id`, `creator_id`, or `inviter_id` supplied in the request.
+- `GET /health` and `GET /` do not require authentication.
 
-### Required later for Browser Use
-
-- `BROWSER_USE_API_URL`: Browser Use endpoint
-- `BROWSER_USE_API_KEY`: Browser Use API key if needed
-
-## Exact Run Commands
+## Run Command
 
 From the `backend` folder:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn main:app --reload
 ```
 
-## Exact Test Commands
+## Quick Checks
 
 ### Health
 
@@ -55,41 +82,61 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ### Buckets
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/buckets | ConvertTo-Json -Depth 6
+Invoke-RestMethod http://127.0.0.1:8000/api/buckets/ | ConvertTo-Json -Depth 8
 ```
 
-### Bucket List Items
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/bucket-list-items | ConvertTo-Json -Depth 6
-```
-
-### Onboarding
+### Plan Bucket From List
 
 ```powershell
 $body = @{
-	city = 'San Diego'
-	answer_one = 'I want to get back into taekwondo'
-	answer_two = 'My ideal weekend is outdoors with friends'
+    user_id = '<user-id>'
+    bucket_list_item_id = '<bucket-list-item-id>'
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://127.0.0.1:8000/api/onboard -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/plan-bucket-from-list -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
 ```
 
-### Plan Bucket
+### Join a Public Bucket
 
 ```powershell
+$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
 $body = @{
-	activity = 'Kayaking'
-	city = 'San Diego'
-	preferences = 'Beginner friendly and scenic'
+    actor_id = '<user-id>'
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://127.0.0.1:8000/api/plan-bucket -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/buckets/<bucket-id>/join -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+```
+
+### Add a Bucket Comment
+
+```powershell
+$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
+$body = @{
+    bucket_id = '<bucket-id>'
+    actor_id = '<user-id>'
+    content = 'I can bring snacks.'
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-comments/ -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+```
+
+### Add Bucket Media Metadata
+
+```powershell
+$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
+$body = @{
+    bucket_id = '<bucket-id>'
+    actor_id = '<user-id>'
+    media_type = 'image'
+    public_url = 'https://example.com/photo.jpg'
+    caption = 'Sunrise was worth it.'
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-media/ -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
 ```
 
 ## Notes
 
-- If Supabase is not configured, the API uses mock in-memory data.
-- If Gemini is not configured, onboarding uses mock generated goals.
-- If Browser Use is not configured, planning returns a mock plan card.
+- Bucket creators are now automatically added to `bucket_members`.
+- Invitation acceptance now creates membership in backend code instead of relying on a database trigger.
+- Media endpoints store metadata only; files should be uploaded directly to Supabase Storage or another file host and then referenced by `public_url`.

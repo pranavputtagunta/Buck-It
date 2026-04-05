@@ -1,22 +1,12 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
-from routers.concierge import format_bucket_cards, run_browser_use_plan
+from routers.concierge import format_bucket_cards, get_user_location, run_browser_use_plan
 from database import supabase
+from schemas import PlanBucketFromListRequest, SearchQuery
 from services.llm_service import llm
 
 
 router = APIRouter(prefix="/api", tags=["Plan Bucket From List"])
-
-
-class PlanBucketFromListRequest(BaseModel):
-    user_id: str
-    bucket_list_item_id: str
-    location: str = "San Diego"
-
-
-class SearchQuery(BaseModel):
-    request_text: str
 
 
 def _generate_search_text(bucket_title: str, location: str) -> str:
@@ -57,9 +47,10 @@ async def plan_bucket_from_list(request: PlanBucketFromListRequest):
 
         bucket_item = bucket_item_response.data[0]
         bucket_title = bucket_item.get("title", "activity")
-        request_text = _generate_search_text(bucket_title, request.location)
+        location = get_user_location(request.user_id)
+        request_text = _generate_search_text(bucket_title, location)
 
-        raw_scraped_data = await run_browser_use_plan(request_text, request.location)
+        raw_scraped_data = await run_browser_use_plan(request_text, location)
         formatted_bucket = format_bucket_cards(raw_scraped_data)
 
         return {
