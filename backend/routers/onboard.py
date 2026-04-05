@@ -4,6 +4,7 @@ import google.generativeai as genai
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database import supabase
+from services.llm_service import llm
 
 router = APIRouter(prefix="/api/onboard", tags=["AI Onboarding"])
 
@@ -28,24 +29,30 @@ async def onboard_user(request: OnboardRequest):
             "Assign a realistic deadline for each (formatted strictly as YYYY-MM-DD)."
         )
 
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=system_instruction
+        ai_response = llm.generate_structured_response(
+            system_instruction=system_instruction,
+            user_prompt=request.user_answers,
+            response_schema=list[BucketGoal]
         )
 
-        response = model.generate_content(
-            request.user_answers,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=list[BucketGoal],
-                temperature=0.7,
-            )
-        )
+        # model = genai.GenerativeModel(
+        #     model_name=MODEL_NAME,
+        #     system_instruction=system_instruction
+        # )
 
-        generated_goals = json.loads(response.text)
+        # response = model.generate_content(
+        #     request.user_answers,
+        #     generation_config=genai.GenerationConfig(
+        #         response_mime_type="application/json",
+        #         response_schema=list[BucketGoal],
+        #         temperature=0.7,
+        #     )
+        # )
+
+        # generated_goals = json.loads(response.text)
         return {
             "status": "success", 
-            "goals": generated_goals
+            "goals": ai_response
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
