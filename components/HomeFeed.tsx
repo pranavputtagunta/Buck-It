@@ -89,6 +89,12 @@ const MOCK_STORIES: Story[] = [
   },
 ];
 
+const DUMMY_COMMENTS = [
+  { id: "1", user: "Avery", text: "This looks so fun." },
+  { id: "2", user: "Jordan", text: "I would totally do this too." },
+  { id: "3", user: "Maya", text: "Adding this to my weekend plans." },
+];
+
 interface BucketItem {
   id: string;
   title: string;
@@ -147,7 +153,10 @@ export default function HomeFeed() {
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
   const [isPostOptionsVisible, setIsPostOptionsVisible] = useState(false);
+  const [isCommentsVisible, setIsCommentsVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedCommentsPost, setSelectedCommentsPost] =
+    useState<PostItem | null>(null);
 
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const shareSlideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -161,6 +170,8 @@ export default function HomeFeed() {
   const [dbPosts, setDbPosts] = useState<PostItem[]>([]);
   const [availableChats, setAvailableChats] = useState<any[]>([]);
   const [activeFilterIds, setActiveFilterIds] = useState<string[]>([]);
+  const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
 
@@ -481,6 +492,27 @@ export default function HomeFeed() {
     }
   };
 
+  const toggleLike = (postId: string) => {
+    setLikedPostIds((prev) =>
+      prev.includes(postId)
+        ? prev.filter((id) => id !== postId)
+        : [...prev, postId],
+    );
+  };
+
+  const toggleSave = (postId: string) => {
+    setSavedPostIds((prev) =>
+      prev.includes(postId)
+        ? prev.filter((id) => id !== postId)
+        : [...prev, postId],
+    );
+  };
+
+  const openComments = (item: PostItem) => {
+    setSelectedCommentsPost(item);
+    setIsCommentsVisible(true);
+  };
+
   // ─── Renderers ───
 
   const renderEvent = ({ item }: ListRenderItemInfo<EventItem>) => (
@@ -544,12 +576,22 @@ export default function HomeFeed() {
       <Image source={{ uri: item.image }} style={styles.cardImage} />
       <View style={styles.postActions}>
         <View style={styles.postIconsLeft}>
-          <Heart color={C.textPrimary} size={24} style={{ marginRight: 16 }} />
-          <MessageCircle
-            color={C.textPrimary}
-            size={24}
+          <TouchableOpacity
+            onPress={() => toggleLike(item.id)}
             style={{ marginRight: 16 }}
-          />
+          >
+            <Heart
+              color={likedPostIds.includes(item.id) ? C.red : C.textPrimary}
+              fill={likedPostIds.includes(item.id) ? C.red : "transparent"}
+              size={24}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => openComments(item)}
+            style={{ marginRight: 16 }}
+          >
+            <MessageCircle color={C.textPrimary} size={24} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               setSelectedItem(item);
@@ -559,7 +601,15 @@ export default function HomeFeed() {
             <Send color={C.textPrimary} size={24} />
           </TouchableOpacity>
         </View>
-        <Bookmark color={C.textPrimary} size={24} />
+        <TouchableOpacity onPress={() => toggleSave(item.id)}>
+          <Bookmark
+            color={
+              savedPostIds.includes(item.id) ? C.accentDark : C.textPrimary
+            }
+            fill={savedPostIds.includes(item.id) ? C.accentDark : "transparent"}
+            size={24}
+          />
+        </TouchableOpacity>
       </View>
       <View style={styles.cardFooter}>
         <Text style={styles.likesText}>{item.likes} likes</Text>
@@ -872,6 +922,41 @@ export default function HomeFeed() {
             </Animated.View>
           </Pressable>
         </Modal>
+
+        {/* MODAL: Dummy Comments */}
+        <Modal visible={isCommentsVisible} transparent animationType="fade">
+          <Pressable
+            style={styles.overlay}
+            onPress={() => setIsCommentsVisible(false)}
+          >
+            <Pressable
+              style={styles.commentsSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={styles.sheetTitle}>Comments</Text>
+              <Text style={styles.commentsSubtitle} numberOfLines={1}>
+                {selectedCommentsPost?.caption || "Sample post"}
+              </Text>
+              <FlatList
+                data={DUMMY_COMMENTS}
+                keyExtractor={(comment) => comment.id}
+                renderItem={({ item: comment }) => (
+                  <View style={styles.commentRow}>
+                    <Text style={styles.commentUser}>{comment.user}</Text>
+                    <Text style={styles.commentText}>{comment.text}</Text>
+                  </View>
+                )}
+                contentContainerStyle={{ paddingBottom: 8 }}
+              />
+              <TouchableOpacity
+                style={styles.closeCommentsBtn}
+                onPress={() => setIsCommentsVisible(false)}
+              >
+                <Text style={styles.closeCommentsBtnText}>Close</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -1117,4 +1202,45 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   applyBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  commentsSheet: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+    maxHeight: "70%",
+  },
+  commentsSubtitle: {
+    color: C.textMuted,
+    fontSize: 13,
+    marginBottom: 14,
+  },
+  commentRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    paddingVertical: 10,
+  },
+  commentUser: {
+    color: C.textPrimary,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  commentText: {
+    color: C.textPrimary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  closeCommentsBtn: {
+    marginTop: 14,
+    backgroundColor: C.accentDark,
+    borderRadius: 12,
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  closeCommentsBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });
