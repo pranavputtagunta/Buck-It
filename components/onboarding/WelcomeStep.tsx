@@ -46,7 +46,7 @@ export default function WelcomeStep({ onNewUser, onReturningUser }: any) {
       <Animated.View style={[styles.header, fadeUp(headerAnim)]}>
         <View style={styles.badge}>
           <Sparkles color={C.accent} size={13} />
-          <Text style={styles.badgeText}>BUCKET</Text>
+          <Text style={styles.badgeText}>BUCK-IT</Text>
         </View>
         <Text style={styles.title}>Live your{"\n"}best life.</Text>
         <Text style={styles.subtitle}>
