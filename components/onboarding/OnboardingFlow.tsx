@@ -43,7 +43,6 @@ export default function OnboardingFlow({
     }).start();
   }, [animatedStep, step]);
 
-  // ─── LOGIC: Returning User ───
   const handleSignIn = async () => {
     try {
       setIsSubmitting(true);
@@ -61,7 +60,6 @@ export default function OnboardingFlow({
     }
   };
 
-  // ─── LOGIC: New User ───
   const handleCreateAccount = async () => {
     try {
       setIsSubmitting(true);
@@ -75,31 +73,40 @@ export default function OnboardingFlow({
 
       if (error) throw error;
       const userId = data.user?.id;
+      if (!userId) throw new Error("Account created but no User ID returned.");
+
+      const hobbiesArray = draft.hobbiesInput
+        .split(",")
+        .map((h) => h.trim())
+        .filter((h) => h !== "");
 
       // 2. Sync Profile to Backend
+      const profilePayload = {
+        id: userId,
+        username: draft.username.trim(),
+        personality: draft.personality.trim(),
+        location: draft.location.trim(),
+        interests: hobbiesArray,
+        hobbies: hobbiesArray,
+        bucket_list: [],
+        onboarding_data: {},
+      };
+
       const response = await fetch(`${apiBase}/api/users/profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: userId,
-          username: draft.username.trim(),
-          personality: draft.personality.trim(),
-          location: draft.location.trim(),
-          // FIX 1: Map 'hobbiesInput' to the 'interests' column
-          interests: draft.hobbiesInput
-            .split(",")
-            .map((h) => h.trim())
-            .filter((h) => h !== ""),
-          onboarding_data: {},
-        }),
+        body: JSON.stringify(profilePayload),
       });
 
-      if (!response.ok) throw new Error("Backend sync failed");
+      if (!response.ok) {
+        const errorDetails = await response.text();
+        throw new Error(`Sync failed: ${errorDetails}`);
+      }
 
-      // FIX 2: Loop through drafted bucket list and push to the AI Tagging endpoint
+      // 3. Process the drafted bucket list items
       if (draft.bucketList && draft.bucketList.length > 0) {
         for (const item of draft.bucketList) {
-          if (!item.title.trim()) continue; // Skip empty inputs
+          if (!item.title.trim()) continue;
           
           try {
             await fetch(`${apiBase}/api/buckets/list-items`, {
@@ -113,7 +120,6 @@ export default function OnboardingFlow({
             });
           } catch (bucketErr) {
             console.error("Failed to add initial bucket item:", bucketErr);
-            // We catch the error but don't throw, so the user still finishes onboarding
           }
         }
       }
