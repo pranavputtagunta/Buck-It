@@ -62,6 +62,13 @@ FastAPI backend for users, bucket lists, buckets, invitations, onboarding, and A
 - `GEMINI_API_KEY`
 - `BROWSER_USE_API_KEY`
 
+### Optional
+
+- `GEMINI_MODEL`
+- `GEMINI_MODEL_NAME`
+
+If no Gemini model env var is provided, the backend defaults to `gemini-1.5-flash`.
+
 ## Access
 
 - All API routes are intentionally open and do not use login or bearer tokens.
@@ -76,6 +83,24 @@ From the `backend` folder:
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn main:app --reload
 ```
+
+Or, if your environment is already active:
+
+```powershell
+uvicorn main:app --reload
+```
+
+## ngrok (for mobile or external device testing)
+
+From the project root in a separate terminal:
+
+```powershell
+ngrok http 8000
+```
+
+Use the HTTPS forwarding URL to set frontend env var `EXPO_PUBLIC_API_BASE_URL` to:
+
+`https://<your-ngrok-domain>.ngrok-free.app/api`
 
 ## Quick Checks
 

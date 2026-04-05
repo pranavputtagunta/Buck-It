@@ -1,100 +1,146 @@
-# Welcome to your Expo app 👋
+# Buck-It
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Buck-It is an Expo React Native app with a FastAPI backend.
 
-## Get started
+This README covers full local setup, including ngrok and all environment variables used by the project.
 
-1. Install dependencies
+## Project Structure
 
-   ```bash
-   npm install
-   ```
+- Frontend: root folder (Expo app)
+- Backend: backend/
 
-2. Start the app
+## Prerequisites
 
-   ```bash
-   npx expo start
-   ```
+- Node.js 18+
+- npm
+- Python 3.10+
+- ngrok
+- Supabase project (URL, anon key, service role key)
+- Gemini API key
 
-In the output, you'll find options to open the app in a
+## Environment Variables
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Create two env files:
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+1. Frontend env file: .env (project root)
+2. Backend env file: backend/.env
 
-## Get a fresh project
+### Frontend .env (root)
 
-When you're ready, run:
+Required:
 
-```bash
-npm run reset-project
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+EXPO_PUBLIC_API_BASE_URL=https://YOUR_NGROK_DOMAIN.ngrok-free.app/api
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Optional fallback:
 
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
-  to your Expo app 👋
-
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
-
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```env
+NGROK_URL=https://YOUR_NGROK_DOMAIN.ngrok-free.app
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Notes:
 
-## Learn more
+- Prefer EXPO_PUBLIC_API_BASE_URL.
+- The frontend normalizes API URLs automatically in src/services/apiClient.ts.
+- If EXPO_PUBLIC_API_BASE_URL already ends with /api, it is used as-is.
 
-To learn more about developing your project with Expo, look at the following resources:
+### Backend .env (backend/.env)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Required:
 
-## Join the community
+```env
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+BROWSER_USE_API_KEY=YOUR_BROWSER_USE_API_KEY
+```
 
-Join our community of developers creating universal apps.
+Optional:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```env
+SUPABASE_SERVICE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL_NAME=gemini-1.5-flash
+```
+
+Notes:
+
+- Backend reads SUPABASE_SERVICE_ROLE_KEY first, then SUPABASE_SERVICE_KEY.
+- If GEMINI_MODEL and GEMINI_MODEL_NAME are both missing, backend defaults to gemini-1.5-flash.
+
+## Local Run (with ngrok)
+
+Use three terminals.
+
+### Terminal 1: Backend
+
+```powershell
+cd backend
+uvicorn main:app --reload
+```
+
+Expected local backend URL:
+
+- http://127.0.0.1:8000
+
+### Terminal 2: ngrok tunnel
+
+```powershell
+ngrok http 8000
+```
+
+Copy the HTTPS forwarding URL from ngrok, for example:
+
+- https://abcd-1234.ngrok-free.app
+
+Then set frontend env:
+
+- EXPO_PUBLIC_API_BASE_URL=https://abcd-1234.ngrok-free.app/api
+
+### Terminal 3: Expo frontend
+
+```powershell
+npm install
+npx expo start
+```
+
+If you change .env values, restart Expo so new env vars are picked up.
+
+## Health Checks
+
+Backend health:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Backend through ngrok:
+
+```powershell
+Invoke-RestMethod https://YOUR_NGROK_DOMAIN.ngrok-free.app/health
+```
+
+## Common Issues
+
+1. App cannot reach backend
+
+- Confirm EXPO_PUBLIC_API_BASE_URL points to current ngrok URL.
+- Ensure backend is running on port 8000.
+- Restart Expo after editing env vars.
+
+2. Supabase errors on startup
+
+- Check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in root .env.
+- Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in backend/.env.
+
+3. AI features fail
+
+- Verify GEMINI_API_KEY in backend/.env.
+- Verify BROWSER_USE_API_KEY for concierge endpoints.
+
+## Backend API Reference
+
+See backend/README.md for route list and backend-specific details.
