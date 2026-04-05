@@ -148,6 +148,8 @@ def _generate_ai_discover_buckets(user_id: str, user_goals: list[dict]) -> list[
         "You are the Bucket App discover engine. Generate exactly 8 NEW bucket ideas the user can add "
         "to their own plans. Do not include already completed activities. "
         "Use practical, near-term suggestions and set status to planned. "
+        "Use one of these exact categories for every item: Health & Fitness, Travel & Adventure, "
+        "Career & Skills, Creative & Art, Social & Nightlife, Relaxation. "
         f"Anchor suggestions to this city: {user_location}."
     )
 
@@ -169,7 +171,7 @@ def _generate_ai_discover_buckets(user_id: str, user_goals: list[dict]) -> list[
         try:
             normalized_category = normalize_bucket_category(category_value)
         except HTTPException:
-            continue
+            normalized_category = "Travel & Adventure"
 
         normalized_rows.append(
             {
@@ -185,7 +187,46 @@ def _generate_ai_discover_buckets(user_id: str, user_goals: list[dict]) -> list[
             }
         )
 
-    return normalized_rows[:8]
+    if normalized_rows:
+        return normalized_rows[:8]
+
+    fallback_rows = [
+        {
+            "title": "Find a scenic sunset walk",
+            "category": "Relaxation",
+            "description": f"Take an evening walk and discover a scenic route in {user_location}.",
+            "location": user_location,
+            "event_time": None,
+            "estimated_cost": "$",
+            "link": None,
+            "image_keyword": user_location,
+            "status": "planned",
+        },
+        {
+            "title": "Try a new local fitness class",
+            "category": "Health & Fitness",
+            "description": f"Join a beginner-friendly class in {user_location} and invite a friend.",
+            "location": user_location,
+            "event_time": None,
+            "estimated_cost": "$$",
+            "link": None,
+            "image_keyword": user_location,
+            "status": "planned",
+        },
+        {
+            "title": "Visit a neighborhood museum or gallery",
+            "category": "Creative & Art",
+            "description": f"Explore a museum or art gallery in {user_location} this week.",
+            "location": user_location,
+            "event_time": None,
+            "estimated_cost": "$$",
+            "link": None,
+            "image_keyword": user_location,
+            "status": "planned",
+        },
+    ]
+
+    return fallback_rows
 
 
 @router.get("/")
@@ -268,6 +309,29 @@ async def get_discover_feed(user_id: str):
         )
         buckets = [_build_bucket_details(bucket) for bucket in ranked_buckets]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/discover-generated/{user_id}")
+async def get_discover_generated_feed(user_id: str):
+    """Generates discover suggestions with Gemini based on the user's goals."""
+    try:
+        user_goals_response = (
+            supabase.table("bucket_list_items")
+            .select("title, deadline")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        user_goals = user_goals_response.data or []
+        discover_suggestions = _generate_ai_discover_buckets(user_id, user_goals)
+
+        return {
+            "status": "success",
+            "data": discover_suggestions,
+        }
     except HTTPException:
         raise
     except Exception as e:

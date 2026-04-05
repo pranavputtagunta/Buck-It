@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ListRenderItemInfo,
   SafeAreaView,
+  RefreshControl,
   Modal,
   Pressable,
   Animated,
@@ -32,7 +33,7 @@ import {
 } from "lucide-react-native";
 import MapModule from "./MapModule";
 import { supabase } from "../app/lib/supabase";
-import Fuse from "fuse.js";
+import { bucketService } from "../src/services/bucketService";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
@@ -109,6 +110,20 @@ interface EventItem {
   tags: string[];
   time_slots: string[];
 }
+
+interface DiscoverBucketItem {
+  id?: string;
+  title?: string;
+  category?: string;
+  event_time?: string;
+  bucket_list_item_id?: string;
+  image?: string;
+  tags?: string[];
+  time_slots?: string[];
+  latitude?: number;
+  longitude?: number;
+}
+
 interface PostItem {
   id: string;
   user: string;
@@ -146,6 +161,55 @@ export default function HomeFeed() {
   const [availableChats, setAvailableChats] = useState<any[]>([]);
   const [activeFilterIds, setActiveFilterIds] = useState<string[]>([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
+  const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
+
+  const loadDiscoverEvents = async (uid: string) => {
+    let discoverFeed: DiscoverBucketItem[] = [];
+
+    try {
+      const generatedFeed = await bucketService.getDiscoverFeed(uid);
+      discoverFeed = Array.isArray(generatedFeed)
+        ? (generatedFeed as DiscoverBucketItem[])
+        : [];
+    } catch (error) {
+      console.warn("Generated discover feed failed, falling back:", error);
+    }
+
+    if (discoverFeed.length === 0) {
+      const rankedFeed = await bucketService.getDiscoverFeedRanked(uid);
+      discoverFeed = Array.isArray(rankedFeed)
+        ? (rankedFeed as DiscoverBucketItem[])
+        : [];
+    }
+
+    const rows = discoverFeed;
+
+    const formatted: EventItem[] = rows.map(
+      (ev: DiscoverBucketItem, index: number) => ({
+        id: String(ev.id ?? `discover-${index}`),
+        user: "Bucket Community",
+        locationName: ev.category || "Bucket recommendation",
+        coords: {
+          latitude: ev.latitude || 32.7157,
+          longitude: ev.longitude || -117.1611,
+        },
+        title: ev.title || "Untitled bucket",
+        image:
+          ev.image ||
+          "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?q=80&w=1200&auto=format&fit=crop",
+        deadline: ev.event_time
+          ? new Date(ev.event_time).toLocaleString()
+          : "Flexible timing",
+        bucketItemId: ev.bucket_list_item_id
+          ? String(ev.bucket_list_item_id)
+          : "",
+        tags: Array.isArray(ev.tags) ? ev.tags : [],
+        time_slots: Array.isArray(ev.time_slots) ? ev.time_slots : [],
+      }),
+    );
+
+    setRecommendedEvents(formatted);
+  };
 
   // ─── Load User & Build Algorithm ───
   useEffect(() => {
@@ -165,22 +229,6 @@ export default function HomeFeed() {
           .eq("id", uid)
           .single();
         if (profile) setUserName(profile.display_name);
-
-        const { data: userBuckets } = await supabase
-          .from("bucket_list_items")
-          .select("tags")
-          .eq("user_id", uid);
-        const { data: userMatrix } = await supabase
-          .from("availabilities")
-          .select("available_slots")
-          .eq("user_id", uid)
-          .maybeSingle();
-
-        const bucketTags = userBuckets
-          ? userBuckets.flatMap((b) => b.tags || [])
-          : [];
-        const slots = userMatrix?.available_slots || [];
-        const userPersonaQuery = [...bucketTags, ...slots].join(" ");
 
         // 2. Fetch User's Chats for Sharing
         const { data: chatParts } = await supabase
@@ -213,50 +261,8 @@ export default function HomeFeed() {
             })),
           );
 
-        // 4. Fetch & Rank Events
-        const { data: globalEvents } = await supabase
-          .from("discover_events")
-          .select("*");
-        if (globalEvents) {
-          const formatted: EventItem[] = globalEvents.map(
-            (ev) =>
-              ({
-                id: ev.id,
-                user: "Bucket Community",
-                locationName: ev.location_name,
-                coords: {
-                  latitude: ev.latitude || 32.7157,
-                  longitude: ev.longitude || -117.1611,
-                },
-                title: ev.title,
-                image: ev.image,
-                deadline: ev.deadline,
-                bucketItemId: ev.bucket_item_id,
-                tags: ev.tags || [],
-                time_slots: ev.time_slots || [],
-                _searchString: `${ev.title} ${(ev.tags || []).join(" ")} ${(ev.time_slots || []).join(" ")}`,
-              }) as any,
-          );
-
-          if (userPersonaQuery.trim().length > 0) {
-            const fuse = new Fuse(formatted, {
-              keys: ["_searchString"],
-              threshold: 0.8,
-            });
-            const results = fuse.search(userPersonaQuery);
-            if (results.length > 0) {
-              const matchedIds = new Set(results.map((r) => r.item.id));
-              setRecommendedEvents([
-                ...results.map((r) => r.item),
-                ...formatted.filter((f) => !matchedIds.has(f.id)),
-              ]);
-            } else {
-              setRecommendedEvents(formatted);
-            }
-          } else {
-            setRecommendedEvents(formatted);
-          }
-        }
+        // 4. Autopopulate Events from discover API
+        await loadDiscoverEvents(uid);
       } catch (err) {
         console.error("Feed build error:", err);
       } finally {
@@ -433,6 +439,19 @@ export default function HomeFeed() {
     }
   };
 
+  const refreshEvents = async () => {
+    if (!userId) return;
+    try {
+      setIsRefreshingEvents(true);
+      await loadDiscoverEvents(userId);
+    } catch (err) {
+      console.error("Discover refresh failed:", err);
+      Alert.alert("Refresh failed", "Could not reload discover events.");
+    } finally {
+      setIsRefreshingEvents(false);
+    }
+  };
+
   // ─── Renderers ───
 
   const renderEvent = ({ item }: ListRenderItemInfo<EventItem>) => (
@@ -578,6 +597,12 @@ export default function HomeFeed() {
             keyExtractor={(item) => item.id}
             renderItem={renderEvent}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshingEvents}
+                onRefresh={() => void refreshEvents()}
+              />
+            }
             ListHeaderComponent={() => (
               <View>
                 <View style={styles.storiesRow}>
