@@ -452,7 +452,7 @@ export default function HomeFeed() {
 
       Alert.alert(
         "Added to your buckets",
-        "This activity is now in your Planning tab.",
+        "This activity is now in your General Plans tab.",
       );
     } catch (err) {
       console.error("Failed to copy post to buckets:", err);
@@ -784,7 +784,7 @@ export default function HomeFeed() {
                   <View style={styles.dragHandle} />
                 </View>
                 <View style={styles.sheetHeader}>
-                  <Text style={styles.sheetTitle}>Filter by Goals</Text>
+                  <Text style={styles.sheetTitle}>Filter by General Plans</Text>
                 </View>
                 <FlatList
                   data={MOCK_GOALS}

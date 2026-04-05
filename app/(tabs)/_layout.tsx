@@ -121,13 +121,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="bucketlist"
         options={{
-          title: "Bucket List",
+          title: "General Plans",
         }}
       />
       <Tabs.Screen
         name="gallery"
         options={{
-          title: "Gallery",
+          title: "Buckets",
         }}
       />
       <Tabs.Screen

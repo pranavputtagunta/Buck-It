@@ -116,7 +116,7 @@ export default function OnboardingFlow({
     const validItems = draft.bucketList.filter((item) => item.title.trim());
     if (!validItems.length) {
       Alert.alert(
-        "Add at least one goal",
+        "Add at least one plan",
         "Use Suggest Items or Add Manually before continuing.",
       );
       return;

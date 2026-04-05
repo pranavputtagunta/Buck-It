@@ -66,9 +66,9 @@ export default function BucketListStep({
   return (
     <View style={styles.container}>
       <Text style={styles.eyebrow}>STEP 3 OF 4</Text>
-      <Text style={styles.title}>The List</Text>
+      <Text style={styles.title}>General Plans</Text>
       <Text style={styles.subtitle}>
-        Draft your first few goals, or let AI suggest some based on your vibe.
+        Draft your first few plans, or let AI suggest some based on your vibe.
       </Text>
 
       {/* Action buttons */}
@@ -104,14 +104,14 @@ export default function BucketListStep({
         </TouchableOpacity>
       </View>
 
-      {/* Goal cards */}
+      {/* Plan cards */}
       {bucketList.map((item: any, i: number) => (
         <View
           key={`${item.source || "manual"}-${item.title || "untitled"}-${i}`}
           style={styles.card}
         >
           <View style={styles.cardHeader}>
-            <Text style={styles.cardIndex}>GOAL {i + 1}</Text>
+            <Text style={styles.cardIndex}>PLAN {i + 1}</Text>
             <TouchableOpacity
               onPress={() => onRemoveBucket(i)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

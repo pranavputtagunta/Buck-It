@@ -709,7 +709,7 @@ export default function GalleryScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>OVERVIEW</Text>
-          <Text style={styles.headerTitle}>Action Center</Text>
+          <Text style={styles.headerTitle}>Buckets</Text>
         </View>
 
         <View style={styles.tabBar}>
@@ -750,7 +750,7 @@ export default function GalleryScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              No {activeTab.toLowerCase()} events right now.
+              No {activeTab.toLowerCase()} buckets right now.
             </Text>
           }
         />

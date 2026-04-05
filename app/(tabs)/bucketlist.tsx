@@ -387,8 +387,8 @@ export default function BucketListScreen() {
         keyboardVerticalOffset={8}
       >
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>MY GOALS</Text>
-          <Text style={styles.title}>Bucket List</Text>
+          <Text style={styles.eyebrow}>MY GENERAL PLANS</Text>
+          <Text style={styles.title}>General Plans</Text>
           <Text style={styles.subtitle}>
             Life is too short to leave it blank
           </Text>
