@@ -1,63 +1,18 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 
-type Props = {
-  personality: string;
-  hobbiesInput: string;
-  onChangePersonality: (value: string) => void;
-  onChangeHobbiesInput: (value: string) => void;
-  onContinue: () => void;
-  onChangeLocation: (value: string) => void;
-  location: string;
-  disabled?: boolean;
-};
-
-export default function ProfileStep({
-  personality,
-  hobbiesInput,
-  onChangePersonality,
-  onChangeHobbiesInput,
-  onChangeLocation,
-  location,
-  onContinue,
-
-  disabled,
-}: Props) {
+export default function ProfileStep({ personality, hobbiesInput, location, onChangePersonality, onChangeHobbiesInput, onChangeLocation, onContinue }: any) {
+  const disabled = !personality || !hobbiesInput || !location;
   return (
     <View>
       <Text style={styles.title}>Your vibe</Text>
-      <Text style={styles.subtitle}>
-        Tell us your personality and a few hobbies.
-      </Text>
-        <TextInput
-        value={location}
-        onChangeText={onChangeLocation}
-        placeholder="Location"
-        placeholderTextColor="#999"
-        style={styles.input}
-        />
-      <TextInput
-        value={personality}
-        onChangeText={onChangePersonality}
-        placeholder="Adventurous, creative, ambitious..."
-        placeholderTextColor="#999"
-        style={styles.input}
-      />
+      <Text style={styles.subtitle}>Tell us where you are and what you're about.</Text>
+      
+      <TextInput value={location} onChangeText={onChangeLocation} placeholder="Current City" style={styles.input} placeholderTextColor="#999" />
+      <TextInput value={personality} onChangeText={onChangePersonality} placeholder="Adventurous, creative..." style={styles.input} placeholderTextColor="#999" />
+      <TextInput value={hobbiesInput} onChangeText={onChangeHobbiesInput} placeholder="Hiking, coding, surfing..." style={[styles.input, { height: 100 }]} multiline placeholderTextColor="#999" />
 
-      <TextInput
-        value={hobbiesInput}
-        onChangeText={onChangeHobbiesInput}
-        placeholder="Hiking, photography, coding..."
-        placeholderTextColor="#999"
-        style={[styles.input, styles.textArea]}
-        multiline
-      />
-
-      <TouchableOpacity
-        style={[styles.button, disabled && styles.buttonDisabled]}
-        onPress={onContinue}
-        disabled={disabled}
-      >
+      <TouchableOpacity style={[styles.button, disabled && { opacity: 0.5 }]} onPress={onContinue} disabled={disabled}>
         <Text style={styles.buttonText}>Continue</Text>
       </TouchableOpacity>
     </View>
@@ -65,45 +20,9 @@ export default function ProfileStep({
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: 38,
-    fontWeight: '900',
-    color: '#000',
-    letterSpacing: -1.5,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#666',
-    marginBottom: 28,
-  },
-  input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: '#000',
-    marginBottom: 14,
-  },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  button: {
-    backgroundColor: '#000',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-  },
+  title: { fontSize: 40, fontWeight: '900', letterSpacing: -1.5, color: '#000' },
+  subtitle: { fontSize: 16, color: '#666', marginBottom: 30 },
+  input: { backgroundColor: '#F8F8F8', borderRadius: 20, padding: 18, fontSize: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', color: '#000' },
+  button: { backgroundColor: '#000', borderRadius: 20, padding: 18, alignItems: 'center', marginTop: 10 },
+  buttonText: { color: '#fff', fontWeight: '800', fontSize: 16 }
 });
