@@ -1,0 +1,15 @@
+export const C = {
+  bg:          '#f7f5f2',
+  surface:     '#ffffff',
+  border:      '#e8e3dc',
+  borderMid:   '#ddd6cc',
+  textPrimary: '#1a1814',
+  textMuted:   '#a09890',
+  textLight:   '#c0b9b0',
+  accent:      '#7a6e62',
+  accentDark:  '#3a342e',
+  accentLight: '#ede9e3',
+  red:         '#b84030',
+  redBg:       '#fff5f3',
+  redBorder:   '#f2d0c8',
+};

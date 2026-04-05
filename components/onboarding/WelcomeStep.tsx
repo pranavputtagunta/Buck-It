@@ -1,71 +1,72 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { ArrowRight, Sparkles } from 'lucide-react-native';
+import { C } from './theme';
 
 export default function WelcomeStep({ onNewUser, onReturningUser }: any) {
-  // Create animated values for the stagger effect
-  const headerAnim = useRef(new Animated.Value(0)).current;
-  const primaryCardAnim = useRef(new Animated.Value(0)).current;
-  const secondaryCardAnim = useRef(new Animated.Value(0)).current;
+  const headerAnim  = useRef(new Animated.Value(0)).current;
+  const card1Anim   = useRef(new Animated.Value(0)).current;
+  const card2Anim   = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Fire animations in a staggered sequence
-    Animated.stagger(150, [
-      Animated.timing(headerAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(primaryCardAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(secondaryCardAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+    Animated.stagger(130, [
+      Animated.timing(headerAnim, { toValue: 1, duration: 550, useNativeDriver: true }),
+      Animated.timing(card1Anim,  { toValue: 1, duration: 550, useNativeDriver: true }),
+      Animated.timing(card2Anim,  { toValue: 1, duration: 550, useNativeDriver: true }),
     ]).start();
   }, []);
 
-  // Helper function to map 0->1 to Slide Up & Fade
-  const getAnimatedStyle = (anim: Animated.Value) => ({
+  const fadeUp = (anim: Animated.Value) => ({
     opacity: anim,
-    transform: [{
-      translateY: anim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [30, 0], // Starts 30px down, slides to 0
-      })
-    }]
+    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
   });
 
   return (
     <View style={styles.container}>
-      
-      {/* Header Section */}
-      <Animated.View style={[styles.headerSection, getAnimatedStyle(headerAnim)]}>
-        <View style={styles.logoBadge}>
-          <Sparkles color="#000" size={14} />
-          <Text style={styles.logoText}>BUCKET</Text>
+
+      {/* Header */}
+      <Animated.View style={[styles.header, fadeUp(headerAnim)]}>
+        <View style={styles.badge}>
+          <Sparkles color={C.accent} size={13} />
+          <Text style={styles.badgeText}>BUCKET</Text>
         </View>
-        <Text style={styles.title}>Live your best life.</Text>
-        <Text style={styles.subtitle}>Turn "one day" into today. Shape your vibe and start your list.</Text>
+        <Text style={styles.title}>Live your{'\n'}best life.</Text>
+        <Text style={styles.subtitle}>
+          Turn "one day" into today. Shape your vibe and start your list.
+        </Text>
       </Animated.View>
 
-      {/* Primary Card */}
-      <Animated.View style={getAnimatedStyle(primaryCardAnim)}>
-        <Pressable 
-          style={({ pressed }) => [styles.card, styles.cardBlack, pressed && styles.pressed]} 
+      {/* Primary card — Start new */}
+      <Animated.View style={fadeUp(card1Anim)}>
+        <Pressable
+          style={({ pressed }) => [styles.card, styles.cardPrimary, pressed && styles.pressed]}
           onPress={onNewUser}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitleWhite}>Start New Journey</Text>
-            <Text style={styles.cardSubWhite}>Build your profile and generate your list with AI.</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardLabelLight}>NEW USER</Text>
+            <Text style={styles.cardTitleLight}>Start New Journey</Text>
+            <Text style={styles.cardSubLight}>Build your profile and generate your list with AI.</Text>
           </View>
-          <ArrowRight color="#fff" size={24} />
+          <View style={styles.arrowWrapLight}>
+            <ArrowRight color={C.accentDark} size={18} />
+          </View>
         </Pressable>
       </Animated.View>
 
-      {/* Secondary Card */}
-      <Animated.View style={getAnimatedStyle(secondaryCardAnim)}>
-        <Pressable 
-          style={({ pressed }) => [styles.card, styles.cardGray, pressed && styles.pressed]} 
+      {/* Secondary card — Returning */}
+      <Animated.View style={fadeUp(card2Anim)}>
+        <Pressable
+          style={({ pressed }) => [styles.card, styles.cardSecondary, pressed && styles.pressed]}
           onPress={onReturningUser}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitleBlack}>Welcome Back</Text>
-            <Text style={styles.cardSubBlack}>Sign in to access your existing active buckets.</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardLabelDark}>RETURNING</Text>
+            <Text style={styles.cardTitleDark}>Welcome Back</Text>
+            <Text style={styles.cardSubDark}>Sign in to access your existing active buckets.</Text>
           </View>
-          <ArrowRight color="#000" size={24} />
+          <View style={styles.arrowWrapDark}>
+            <ArrowRight color={C.accent} size={18} />
+          </View>
         </Pressable>
       </Animated.View>
 
@@ -75,20 +76,48 @@ export default function WelcomeStep({ onNewUser, onReturningUser }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center' },
-  headerSection: { marginBottom: 30 },
-  logoBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F0F0', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 16 },
-  logoText: { fontSize: 12, fontWeight: '900', marginLeft: 6, letterSpacing: 1 },
-  title: { fontSize: 48, fontWeight: '900', letterSpacing: -2, lineHeight: 48, color: '#000' },
-  subtitle: { fontSize: 17, color: '#666', marginTop: 12, lineHeight: 24 },
-  
-  card: { borderRadius: 24, padding: 24, marginBottom: 16, flexDirection: 'row', alignItems: 'center' },
-  cardBlack: { backgroundColor: '#000', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 5 },
-  cardGray: { backgroundColor: '#F8F8F8', borderWidth: 1, borderColor: '#EEE' },
-  
-  cardTitleWhite: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 6 },
-  cardSubWhite: { color: '#AAA', fontSize: 14, lineHeight: 20 },
-  cardTitleBlack: { color: '#000', fontSize: 20, fontWeight: '800', marginBottom: 6 },
-  cardSubBlack: { color: '#666', fontSize: 14, lineHeight: 20 },
-  
-  pressed: { transform: [{ scale: 0.97 }], opacity: 0.9 }
+
+  header: { marginBottom: 32 },
+  badge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.accentLight, alignSelf: 'flex-start',
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 99, borderWidth: 1, borderColor: C.borderMid,
+    marginBottom: 20,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700', color: C.accent, marginLeft: 6, letterSpacing: 1.2 },
+
+  title: {
+    fontSize: 50, fontWeight: '700', letterSpacing: -2,
+    lineHeight: 52, color: C.textPrimary,
+  },
+  subtitle: { fontSize: 16, color: C.textMuted, marginTop: 12, lineHeight: 24, fontWeight: '400' },
+
+  card: { borderRadius: 20, padding: 22, marginBottom: 14, flexDirection: 'row', alignItems: 'center' },
+
+  cardPrimary: { backgroundColor: C.accentDark, borderWidth: 1, borderColor: C.accentDark },
+  cardSecondary: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+
+  cardTextWrap: { flex: 1, marginRight: 12 },
+
+  cardLabelLight: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2, color: 'rgba(255,255,255,0.45)', marginBottom: 6 },
+  cardTitleLight: { fontSize: 19, fontWeight: '700', color: '#fff', marginBottom: 5, letterSpacing: -0.3 },
+  cardSubLight:   { fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 19 },
+
+  cardLabelDark:  { fontSize: 10, fontWeight: '700', letterSpacing: 1.2, color: C.textLight, marginBottom: 6 },
+  cardTitleDark:  { fontSize: 19, fontWeight: '700', color: C.textPrimary, marginBottom: 5, letterSpacing: -0.3 },
+  cardSubDark:    { fontSize: 13, color: C.textMuted, lineHeight: 19 },
+
+  arrowWrapLight: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  arrowWrapDark: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.accentLight, borderWidth: 1, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
 });

@@ -1,7 +1,43 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ListRenderItemInfo, SafeAreaView } from 'react-native';
-import { Users, Camera, Sparkles } from 'lucide-react-native';
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  ListRenderItemInfo,
+  SafeAreaView,
+  Animated,
+  Image,
+  ScrollView,
+  LayoutAnimation,
+} from 'react-native';
+import { Users, Camera, Sparkles, ChevronDown, ChevronUp, Award } from 'lucide-react-native';
 
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  bg:          '#f7f5f2',
+  surface:     '#ffffff',
+  border:      '#e8e3dc',
+  borderMid:   '#ddd6cc',
+  textPrimary: '#1a1814',
+  textMuted:   '#a09890',
+  textLight:   '#c0b9b0',
+  accent:      '#7a6e62',
+  accentDark:  '#3a342e',
+  accentLight: '#ede9e3',
+  green:       '#4a7c59',
+  greenBg:     '#f0f7f2',
+  greenBorder: '#c8dfd0',
+  amber:       '#9a7020',
+  amberBg:     '#fdf8f0',
+  amberBorder: '#eddfbf',
+  red:         '#b84030',
+  redBg:       '#fff5f3',
+  redBorder:   '#f2d0c8',
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 type TabType = 'Planned' | 'Active' | 'Completed';
 const TABS: TabType[] = ['Planned', 'Active', 'Completed'];
 
@@ -10,99 +46,307 @@ interface ActionItem {
   title: string;
   statusText: string;
   participants: number;
+  hasBadge?: boolean;
+  photos?: string[];
 }
 
-// Data organized by the three states
+// ─── Mock Data ────────────────────────────────────────────────────────────────
 const MOCK_DATA: Record<TabType, ActionItem[]> = {
   Planned: [
-    { id: '1', title: 'Sunset Kayaking at La Jolla', statusText: 'Awaiting RSVPs - AI handling invites', participants: 4 },
+    {
+      id: '1',
+      title: 'Sunset Kayaking at La Jolla',
+      statusText: 'Awaiting RSVPs — AI handling invites',
+      participants: 4,
+    },
   ],
   Active: [
-    { id: '2', title: 'UCSD Hackathon Team-up', statusText: 'Happening Now - Drop photos here!', participants: 3 },
+    {
+      id: '2',
+      title: 'UCSD Hackathon Team-up',
+      statusText: 'Happening now — drop photos here!',
+      participants: 3,
+    },
   ],
   Completed: [
-    { id: '3', title: 'Torrey Pines Morning Hike', statusText: 'Scrapbook Generated - Badges Awarded', participants: 6 },
-    { id: '4', title: 'Intro to Robotics Workshop', statusText: 'Scrapbook Generated', participants: 12 },
-  ]
+    {
+      id: '3',
+      title: 'Torrey Pines Morning Hike',
+      statusText: 'Scrapbook generated · Badges awarded',
+      participants: 6,
+      hasBadge: true,
+      photos: [
+        'https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=400&auto=format&fit=crop',
+      ],
+    },
+    {
+      id: '4',
+      title: 'Intro to Robotics Workshop',
+      statusText: 'Scrapbook generated',
+      participants: 12,
+      hasBadge: false,
+      photos: [
+        'https://images.unsplash.com/photo-1535378917042-10a22c95931a?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1563207153-f403bf289163?q=80&w=400&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=400&auto=format&fit=crop',
+      ],
+    },
+  ],
 };
 
-export default function GalleryScreen() {
-  const [activeTab, setActiveTab] = useState<TabType>('Planned');
+// ─── Tab config ───────────────────────────────────────────────────────────────
+const TAB_CONFIG = {
+  Planned:   { color: C.amber,  bg: C.amberBg,  border: C.amberBorder,  icon: (c: string) => <Users   size={18} color={c} />, label: 'Planned'   },
+  Active:    { color: C.red,    bg: C.redBg,    border: C.redBorder,    icon: (c: string) => <Camera  size={18} color={c} />, label: 'Active'    },
+  Completed: { color: C.green,  bg: C.greenBg,  border: C.greenBorder,  icon: (c: string) => <Sparkles size={18} color={c} />, label: 'Completed' },
+};
 
-  const getStatusIcon = (tab: TabType) => {
-    switch (tab) {
-      case 'Planned': return <Users size={20} color="#000" />;
-      case 'Active': return <Camera size={20} color="#000" />;
-      case 'Completed': return <Sparkles size={20} color="#000" />;
-    }
+// ─── Completed Card (with expandable gallery) ─────────────────────────────────
+function CompletedCard({ item }: { item: ActionItem }) {
+  const [open, setOpen] = useState(false);
+  const cfg = TAB_CONFIG.Completed;
+
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen(v => !v);
   };
 
-  const renderItem = ({ item }: ListRenderItemInfo<ActionItem>) => (
-    <View style={styles.card}>
+  return (
+    <View style={[styles.card, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
+      {/* Top row */}
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        {getStatusIcon(activeTab)}
+        <View style={styles.cardHeaderLeft}>
+          <Text style={styles.cardTitle}>{item.title}</Text>
+          <Text style={[styles.cardStatus, { color: cfg.color }]}>{item.statusText}</Text>
+        </View>
+        <View style={[styles.iconWrap, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
+          {cfg.icon(cfg.color)}
+        </View>
       </View>
-      <Text style={styles.cardStatus}>{item.statusText}</Text>
-      
-      <View style={styles.participantPill}>
-        <Text style={styles.participantText}>{item.participants} people</Text>
+
+      {/* Pills row */}
+      <View style={styles.pillsRow}>
+        <View style={[styles.pill, { backgroundColor: C.accentLight, borderColor: C.borderMid }]}>
+          <Users size={11} color={C.accent} style={{ marginRight: 4 }} />
+          <Text style={[styles.pillText, { color: C.accent }]}>{item.participants} people</Text>
+        </View>
+        {item.hasBadge && (
+          <View style={[styles.pill, { backgroundColor: '#fdf8e8', borderColor: '#e8d88a' }]}>
+            <Award size={11} color="#8a7010" style={{ marginRight: 4 }} />
+            <Text style={[styles.pillText, { color: '#8a7010' }]}>Badge earned</Text>
+          </View>
+        )}
+        {item.photos && item.photos.length > 0 && (
+          <TouchableOpacity
+            style={[styles.pill, styles.pillTouchable, { backgroundColor: cfg.bg, borderColor: cfg.border }]}
+            onPress={toggle}
+            activeOpacity={0.7}
+          >
+            <Camera size={11} color={cfg.color} style={{ marginRight: 4 }} />
+            <Text style={[styles.pillText, { color: cfg.color }]}>
+              {item.photos.length} photos
+            </Text>
+            {open
+              ? <ChevronUp   size={11} color={cfg.color} style={{ marginLeft: 3 }} />
+              : <ChevronDown size={11} color={cfg.color} style={{ marginLeft: 3 }} />}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Expandable photo gallery */}
+      {open && item.photos && (
+        <View style={styles.galleryWrap}>
+          <View style={styles.galleryDivider} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.galleryScroll}
+          >
+            {item.photos.map((uri, idx) => (
+              <View key={idx} style={styles.photoThumb}>
+                <Image source={{ uri }} style={styles.photoImg} resizeMode="cover" />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Standard Card (Planned / Active) ─────────────────────────────────────────
+function StandardCard({ item, tab }: { item: ActionItem; tab: TabType }) {
+  const cfg = TAB_CONFIG[tab];
+  return (
+    <View style={[styles.card, { borderColor: cfg.border, backgroundColor: cfg.bg }]}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <Text style={styles.cardTitle}>{item.title}</Text>
+          <Text style={[styles.cardStatus, { color: cfg.color }]}>{item.statusText}</Text>
+        </View>
+        <View style={[styles.iconWrap, { backgroundColor: C.surface, borderColor: cfg.border }]}>
+          {cfg.icon(cfg.color)}
+        </View>
+      </View>
+      <View style={styles.pillsRow}>
+        <View style={[styles.pill, { backgroundColor: C.accentLight, borderColor: C.borderMid }]}>
+          <Users size={11} color={C.accent} style={{ marginRight: 4 }} />
+          <Text style={[styles.pillText, { color: C.accent }]}>{item.participants} people</Text>
+        </View>
       </View>
     </View>
   );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+export default function GalleryScreen() {
+  const [activeTab, setActiveTab] = useState<TabType>('Planned');
+
+  const renderItem = ({ item }: ListRenderItemInfo<ActionItem>) =>
+    activeTab === 'Completed'
+      ? <CompletedCard item={item} />
+      : <StandardCard  item={item} tab={activeTab} />;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <Text style={styles.headerTitle}>Action Center</Text>
-        
-        {/* Custom Tab Switcher */}
-        <View style={styles.tabContainer}>
-          {TABS.map(tab => (
-            <TouchableOpacity 
-              key={tab} 
-              style={[styles.tab, activeTab === tab && styles.activeTab]}
-              onPress={() => setActiveTab(tab)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-            </TouchableOpacity>
-          ))}
+
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>OVERVIEW</Text>
+          <Text style={styles.headerTitle}>Action Center</Text>
         </View>
 
-        {/* Dynamic List based on State */}
+        {/* Tab switcher */}
+        <View style={styles.tabBar}>
+          {TABS.map(tab => {
+            const active = activeTab === tab;
+            const cfg = TAB_CONFIG[tab];
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tab, active && { borderBottomColor: cfg.color, borderBottomWidth: 2 }]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, active && { color: cfg.color, fontWeight: '700' }]}>
+                  {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* List */}
         <FlatList
           data={MOCK_DATA[activeTab]}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nothing here yet.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>Nothing here yet.</Text>
+          }
         />
       </View>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#fff' },
-  container: { flex: 1, backgroundColor: '#fff' },
-  headerTitle: { fontSize: 28, fontWeight: '900', paddingHorizontal: 16, marginTop: 12, marginBottom: 16, letterSpacing: -0.5 },
-  
-  // Tab Switcher Styles
-  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, borderBottomWidth: 1, borderColor: '#eee', marginBottom: 16 },
-  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  activeTab: { borderBottomWidth: 2, borderBottomColor: '#000' },
-  tabText: { fontSize: 15, color: '#888', fontWeight: '600' },
-  activeTabText: { color: '#000', fontWeight: '800' },
-  
-  // List Styles
-  listContainer: { paddingHorizontal: 16, paddingBottom: 100 },
-  card: { padding: 20, backgroundColor: '#f8f8f8', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#000', flex: 1, marginRight: 12 },
-  cardStatus: { fontSize: 14, color: '#666', marginBottom: 16, lineHeight: 20 },
-  participantPill: { alignSelf: 'flex-start', backgroundColor: '#e6e6e6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  participantText: { fontSize: 12, fontWeight: '600', color: '#333' },
-  emptyText: { textAlign: 'center', marginTop: 40, color: '#888', fontSize: 16 },
+  safe:      { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, backgroundColor: C.bg },
+
+  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4 },
+  eyebrow: { fontSize: 10, fontWeight: '600', letterSpacing: 1.4, color: C.textLight, marginBottom: 4 },
+  headerTitle: { fontSize: 30, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.6 },
+
+  // Tabs
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderColor: C.border,
+    marginTop: 16,
+    backgroundColor: C.bg,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabText: { fontSize: 13, fontWeight: '500', color: C.textMuted, letterSpacing: 0.1 },
+
+  // List
+  list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
+  emptyText: { textAlign: 'center', marginTop: 48, color: C.textLight, fontSize: 14, fontStyle: 'italic' },
+
+  // Card
+  card: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 14,
+    backgroundColor: C.surface,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  cardHeaderLeft: { flex: 1, marginRight: 12 },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textPrimary,
+    letterSpacing: -0.3,
+    marginBottom: 5,
+    lineHeight: 22,
+  },
+  cardStatus: { fontSize: 12, fontWeight: '500', letterSpacing: 0.1, lineHeight: 18 },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Pills
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  pillTouchable: {},
+  pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
+
+  // Gallery
+  galleryWrap: { marginTop: 14 },
+  galleryDivider: { height: 1, backgroundColor: C.border, marginBottom: 14 },
+  galleryScroll: { paddingBottom: 2 },
+  photoThumb: {
+    width: 110,
+    height: 110,
+    borderRadius: 12,
+    marginRight: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  photoImg: { width: '100%', height: '100%' },
 });
