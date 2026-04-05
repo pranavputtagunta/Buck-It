@@ -14,6 +14,7 @@ class BadgeUpdate(BaseModel):
 class UserCreate(BaseModel):
     id: str
     display_name: str
+    location: str = "San Diego"
 
 @router.get("/{user_id}")
 async def get_user(user_id: str, auth_user_id: str = Depends(get_current_user_id)):
@@ -58,6 +59,7 @@ async def add_user_badge(user: UserCreate, auth_user_id: str = Depends(get_curre
         user_response = supabase.table("users").insert({
             "id": user.id,
             "display_name": user.display_name,
+            "location": user.location,
             "badges": []
         }).execute()
         return {"status": "success", "data": user_response.data}

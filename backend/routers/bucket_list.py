@@ -3,18 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from auth import get_current_user_id, require_matching_user
 from database import supabase
+from schemas import BucketListItemCreate, BucketListItemUpdate
 
 router = APIRouter(prefix="/api/bucket-list", tags=["Bucket List"])
-
-class BucketListItemCreate(BaseModel):
-    user_id: str
-    title: str
-    deadline: Optional[str] = None
-
-
-class BucketListItemUpdate(BaseModel):
-    title: Optional[str] = None
-    deadline: Optional[str] = None
 
 @router.post("/")
 async def create_bucket_list_item(item: BucketListItemCreate, auth_user_id: str = Depends(get_current_user_id)):

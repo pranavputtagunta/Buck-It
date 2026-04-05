@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from auth import get_current_user_id, require_matching_user
 from routers.concierge import format_bucket_cards, get_user_location, run_browser_use_plan
 from database import supabase
 from schemas import PlanBucketFromListRequest, SearchQuery
@@ -33,9 +32,8 @@ def _generate_search_text(bucket_title: str, location: str) -> str:
 
 
 @router.post("/plan-bucket-from-list")
-async def plan_bucket_from_list(request: PlanBucketFromListRequest, auth_user_id: str = Depends(get_current_user_id)):
+async def plan_bucket_from_list(request: PlanBucketFromListRequest):
     try:
-        require_matching_user(auth_user_id, request.user_id)
         bucket_item_response = (
             supabase.table("bucket_list_items")
             .select("*")
@@ -60,7 +58,5 @@ async def plan_bucket_from_list(request: PlanBucketFromListRequest, auth_user_id
             "message": "Browser Use cloud agent successfully scraped and formatted the event.",
             "data": formatted_bucket,
         }
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

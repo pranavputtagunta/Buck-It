@@ -10,6 +10,7 @@ from schemas import PlanBucketRequest, PlannedBucketCard, BucketDisplay
 router = APIRouter(prefix="/api/concierge", tags=["AI Concierge (Browser Use)"])
 
 
+<<<<<<< HEAD
 def get_user_location(user_id: str) -> str:
     user_response = (
         supabase.table("users")
@@ -24,6 +25,8 @@ def get_user_location(user_id: str) -> str:
     return "San Diego"
 
 
+=======
+>>>>>>> 1efdbf137a53b631dd4f44804adca853a5a61fca
 async def run_browser_use_plan(request_text: str, location: str) -> str:
     client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
     agent_task = (
@@ -48,18 +51,28 @@ def format_bucket_cards(raw_scraped_data: str):
     return llm.generate_structured_response(
         system_instruction=system_prompt,
         user_prompt=raw_scraped_data,
+<<<<<<< HEAD
         response_schema=list[BucketDisplay]
+=======
+        response_schema=list[PlannedBucketCard]
+>>>>>>> 1efdbf137a53b631dd4f44804adca853a5a61fca
     )
 
 @router.post("/plan-bucket")
 async def plan_bucket(request: PlanBucketRequest, auth_user_id: str = Depends(get_current_user_id)):
     try:
+<<<<<<< HEAD
         require_matching_user(auth_user_id, request.user_id)
         user_location = get_user_location(request.user_id)
 
         raw_scraped_data = await run_browser_use_plan(request.request_text, user_location)
         formatted_bucket = format_bucket_cards(raw_scraped_data)
 
+=======
+        raw_scraped_data = await run_browser_use_plan(request.request_text, request.location)
+        formatted_bucket = format_bucket_cards(raw_scraped_data)
+
+>>>>>>> 1efdbf137a53b631dd4f44804adca853a5a61fca
         return {
             "status": "success",
             "message": "Browser Use cloud agent successfully scraped and formatted the event.",
