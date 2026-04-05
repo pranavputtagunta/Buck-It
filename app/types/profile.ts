@@ -1,4 +1,4 @@
-import type { BucketDraftItem } from './onboarding';
+import type { BucketDraftItem } from "./onboarding";
 
 export interface ProfileCreateRequest {
   id: string;
@@ -10,13 +10,13 @@ export interface ProfileCreateRequest {
 }
 
 export interface ProfileCreateResponse {
-  status: 'success';
-  data: Array<{
+  status: "success";
+  data: {
     id: string;
     username: string;
     personality: string;
     hobbies: string[];
     bucket_list: BucketDraftItem[];
     onboarding_data: Record<string, any>;
-  }>;
+  }[];
 }

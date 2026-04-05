@@ -10,6 +10,7 @@ from routers import (
     bucket_comments,
     bucket_media,
 )
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Bucket App API",

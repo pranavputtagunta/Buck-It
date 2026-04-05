@@ -11,24 +11,40 @@ import {
 } from "react-native";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const TAB_COUNT = 4;
-const TAB_WIDTH = SCREEN_WIDTH / TAB_COUNT;
+
+const ICONS_BY_ROUTE: Record<
+  string,
+  React.ComponentType<{ size?: number; color?: string }>
+> = {
+  index: Home,
+  bucketlist: ListTodo,
+  gallery: ImageIcon,
+  profile: User,
+};
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
+  const visibleRoutes = state.routes.filter(
+    (route: any) => descriptors[route.key]?.options?.href !== null,
+  );
+  const visibleCount = Math.max(visibleRoutes.length, 1);
+  const tabWidth = SCREEN_WIDTH / visibleCount;
+  const focusedRouteKey = state.routes[state.index]?.key;
+  const focusedVisibleIndex = Math.max(
+    0,
+    visibleRoutes.findIndex((route: any) => route.key === focusedRouteKey),
+  );
   const translateX = useRef(
-    new Animated.Value(state.index * TAB_WIDTH),
+    new Animated.Value(focusedVisibleIndex * tabWidth),
   ).current;
 
   useEffect(() => {
     Animated.spring(translateX, {
-      toValue: state.index * TAB_WIDTH,
+      toValue: focusedVisibleIndex * tabWidth,
       useNativeDriver: true,
       tension: 140,
       friction: 18,
     }).start();
-  }, [state.index, translateX]);
-
-  const icons = [Home, ListTodo, ImageIcon, User];
+  }, [focusedVisibleIndex, tabWidth, translateX]);
 
   return (
     <View style={styles.tabBar}>
@@ -37,13 +53,15 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           styles.activeIndicator,
           {
             transform: [{ translateX }],
+            left: tabWidth * 0.18,
+            width: tabWidth * 0.64,
           },
         ]}
       />
 
-      {state.routes.map((route: any, index: number) => {
-        const isFocused = state.index === index;
-        const Icon = icons[index];
+      {visibleRoutes.map((route: any, index: number) => {
+        const isFocused = focusedRouteKey === route.key;
+        const Icon = ICONS_BY_ROUTE[route.name] ?? Home;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -76,7 +94,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             onPress={onPress}
             onLongPress={onLongPress}
             activeOpacity={0.9}
-            style={styles.tabButton}
+            style={[styles.tabButton, { width: tabWidth }]}
           >
             <Icon size={28} color={isFocused ? "#fff" : "#888"} />
           </TouchableOpacity>
@@ -112,6 +130,12 @@ export default function TabLayout() {
           title: "Gallery",
         }}
       />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          href: null,
+        }}
+      />
 
       <Tabs.Screen
         name="profile"
@@ -139,7 +163,6 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   tabButton: {
-    width: TAB_WIDTH,
     height: Platform.OS === "ios" ? 64 : 64,
     justifyContent: "center",
     alignItems: "center",
@@ -148,8 +171,6 @@ const styles = StyleSheet.create({
   activeIndicator: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 20 : 0,
-    left: TAB_WIDTH * 0.18,
-    width: TAB_WIDTH * 0.64,
     height: 4,
     borderRadius: 999,
     backgroundColor: "#fff",
