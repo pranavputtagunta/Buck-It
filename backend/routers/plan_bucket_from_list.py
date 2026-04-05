@@ -58,5 +58,7 @@ async def plan_bucket_from_list(request: PlanBucketFromListRequest):
             "message": "Browser Use cloud agent successfully scraped and formatted the event.",
             "data": formatted_bucket,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

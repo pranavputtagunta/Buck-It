@@ -1,16 +1,8 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Optional
-from auth import get_current_user_id, require_matching_user
+from fastapi import APIRouter, HTTPException
 from database import supabase
-<<<<<<< HEAD
-from schemas import BucketJoinRequest
-=======
-from services.llm_service import llm
-from schemas import BucketCreate, BucketUpdate, BucketStatusUpdate, DiscoverFeedItem, BucketDisplay
->>>>>>> 1efdbf137a53b631dd4f44804adca853a5a61fca
+from schemas import BucketCreate, BucketJoinRequest, BucketStatusUpdate, BucketUpdate
 
 router = APIRouter(prefix="/api/buckets", tags=["Buckets"])
 
@@ -133,17 +125,19 @@ def _score_bucket_for_user(bucket: dict, bucket_list_titles: list[str]) -> int:
 
 
 @router.get("/")
-async def get_all_buckets(_auth_user_id: str = Depends(get_current_user_id)):
+async def get_all_buckets():
     try:
         response = supabase.table("buckets").select("*").order("created_at", desc=True).execute()
         buckets = [_build_bucket_details(bucket) for bucket in (response.data or [])]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/feed/global")
-async def get_global_feed(_auth_user_id: str = Depends(get_current_user_id)):
+async def get_global_feed():
     """Fetches recently completed buckets for the feed."""
     try:
         response = (
@@ -157,15 +151,16 @@ async def get_global_feed(_auth_user_id: str = Depends(get_current_user_id)):
         )
         buckets = [_build_bucket_details(bucket) for bucket in (response.data or [])]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/discover/{user_id}")
-async def get_discover_feed(user_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def get_discover_feed(user_id: str):
     """Fetches upcoming public/shared buckets, ranked by the user's bucket list interests."""
     try:
-        require_matching_user(auth_user_id, user_id)
         membership_response = (
             supabase.table("bucket_members")
             .select("bucket_id")
@@ -209,15 +204,16 @@ async def get_discover_feed(user_id: str, auth_user_id: str = Depends(get_curren
         )
         buckets = [_build_bucket_details(bucket) for bucket in ranked_buckets]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/user/{user_id}")
-async def get_user_buckets(user_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def get_user_buckets(user_id: str):
     """Fetches all buckets for a specific user."""
     try:
-        require_matching_user(auth_user_id, user_id)
         membership_response = (
             supabase.table("bucket_members")
             .select("bucket_id")
@@ -240,21 +236,20 @@ async def get_user_buckets(user_id: str, auth_user_id: str = Depends(get_current
         response = supabase.table("buckets").select("*").in_("id", list(bucket_ids)).order("created_at", desc=True).execute()
         buckets = [_build_bucket_details(bucket) for bucket in (response.data or [])]
         return {"status": "success", "data": buckets}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{bucket_id}")
-async def get_bucket(bucket_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def get_bucket(bucket_id: str):
     try:
         response = supabase.table("buckets").select("*").eq("id", bucket_id).execute()
         if not response.data:
             raise HTTPException(status_code=404, detail="Bucket not found")
 
         bucket = response.data[0]
-        if bucket.get("visibility") == "private" and not _is_bucket_member(bucket_id, auth_user_id):
-            raise HTTPException(status_code=403, detail="You do not have access to this bucket")
-
         bucket = _build_bucket_details(bucket)
         return {"status": "success", "data": bucket}
     except HTTPException:
@@ -263,9 +258,8 @@ async def get_bucket(bucket_id: str, auth_user_id: str = Depends(get_current_use
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/")
-async def create_bucket(bucket: BucketCreate, auth_user_id: str = Depends(get_current_user_id)):
+async def create_bucket(bucket: BucketCreate):
     try:
-        require_matching_user(auth_user_id, bucket.creator_id)
         response = supabase.table("buckets").insert({
             "creator_id": bucket.creator_id,
             "title": bucket.title,
@@ -294,9 +288,8 @@ async def create_bucket(bucket: BucketCreate, auth_user_id: str = Depends(get_cu
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{bucket_id}")
-async def update_bucket(bucket_id: str, update: BucketUpdate, auth_user_id: str = Depends(get_current_user_id)):
+async def update_bucket(bucket_id: str, update: BucketUpdate):
     try:
-        require_matching_user(auth_user_id, update.actor_id)
         _require_bucket_creator(bucket_id, update.actor_id)
         update_data = update.model_dump(exclude_none=True, exclude={"actor_id"})
         if not update_data:
@@ -309,10 +302,9 @@ async def update_bucket(bucket_id: str, update: BucketUpdate, auth_user_id: str 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{bucket_id}/status")
-async def update_bucket_status(bucket_id: str, update: BucketStatusUpdate, auth_user_id: str = Depends(get_current_user_id)):
+async def update_bucket_status(bucket_id: str, update: BucketStatusUpdate):
     """Moves a bucket from Planned -> Active -> Completed."""
     try:
-        require_matching_user(auth_user_id, update.actor_id)
         _require_bucket_creator(bucket_id, update.actor_id)
         response = supabase.table("buckets").update({"status": update.status}).eq("id", bucket_id).execute()
         return {"status": "success", "data": response.data}
@@ -322,9 +314,8 @@ async def update_bucket_status(bucket_id: str, update: BucketStatusUpdate, auth_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{bucket_id}")
-async def delete_bucket(bucket_id: str, actor_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def delete_bucket(bucket_id: str, actor_id: str):
     try:
-        require_matching_user(auth_user_id, actor_id)
         _require_bucket_creator(bucket_id, actor_id)
         supabase.table("buckets").delete().eq("id", bucket_id).execute()
         return {"status": "success", "message": "Bucket deleted"}
@@ -335,9 +326,8 @@ async def delete_bucket(bucket_id: str, actor_id: str, auth_user_id: str = Depen
 
 
 @router.post("/{bucket_id}/join")
-async def join_bucket(bucket_id: str, payload: BucketJoinRequest, auth_user_id: str = Depends(get_current_user_id)):
+async def join_bucket(bucket_id: str, payload: BucketJoinRequest):
     try:
-        require_matching_user(auth_user_id, payload.actor_id)
         bucket = _get_bucket_row(bucket_id)
         if bucket.get("visibility") == "private":
             raise HTTPException(status_code=403, detail="Private buckets require an invitation")
@@ -358,9 +348,8 @@ async def join_bucket(bucket_id: str, payload: BucketJoinRequest, auth_user_id: 
 
 
 @router.delete("/{bucket_id}/members/{member_user_id}")
-async def remove_bucket_member(bucket_id: str, member_user_id: str, actor_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def remove_bucket_member(bucket_id: str, member_user_id: str, actor_id: str):
     try:
-        require_matching_user(auth_user_id, actor_id)
         bucket = _get_bucket_row(bucket_id)
         if bucket["creator_id"] == member_user_id:
             raise HTTPException(status_code=400, detail="Cannot remove the bucket creator")
@@ -388,39 +377,5 @@ async def remove_bucket_member(bucket_id: str, member_user_id: str, actor_id: st
         return {"status": "success", "message": "Bucket member removed", "data": bucket_details}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/feed/discover/{user_id}")
-async def get_discover_feed(user_id: str):
-    try:
-        # 1. Fetch the user's dream board
-        bucket_list_response = supabase.table("bucket_list_items").select("*").eq("user_id", user_id).execute()
-        user_goals = bucket_list_response.data
-
-        user_location = supabase.table("users").select("location").eq("id", user_id).execute().data[0].get("location", "San Diego")
-        print("User location:", user_location)
-
-        # 2. If they have no goals yet, give them a generic San Diego starter pack
-        if not user_goals:
-            user_goals = [{"title": "Explore San Diego", "deadline": "None"}]
-
-        # 3. Use FAST Gemini to generate 10 ideas instantly
-        system_prompt = (
-            "You are the Bucket App recommendation engine. Look at the user's high-level goals "
-            f"and suggest 10 highly specific, actionable local events in {user_location} that match them. "
-            # "Do not search the web. Rely on your internal knowledge of the city."
-        )
-
-        # Notice we are passing the goals as context to our LLM service
-        feed_items = llm.generate_structured_response(
-            system_instruction=system_prompt,
-            user_prompt="Generate my daily discover feed.",
-            response_schema=list[BucketDisplay],
-            user_context={"user_goals": user_goals}
-        )
-
-        return {"status": "success", "data": feed_items}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
