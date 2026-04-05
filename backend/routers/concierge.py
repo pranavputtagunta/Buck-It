@@ -25,8 +25,8 @@ def get_user_location(user_id: str) -> str:
 async def run_browser_use_plan(request_text: str, location: str) -> str:
     client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
     agent_task = (
-        f"Go to Yelp or Google Maps and search for: {request_text} in {location}. "
-        "Find three top-rated locations, or if the user provides another criteria, use that."
+        f"Find information online about the following: {request_text} in {location}. "
+        "Find three top-rated locations, events, activities, etc., or if the user provides another criteria, use that."
         "Extract the exact Name, Address, Hours of Operation today, and a URL link to the business. "
         "DO NOT attempt to make a reservation, click 'buy', or enter any personal information. "
         "Return the extracted information as plain text."

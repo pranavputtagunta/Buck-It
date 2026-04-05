@@ -4,6 +4,7 @@ from routers import (
     bucket_list,
     buckets,
     users,
+    chat,
     concierge,
     plan_bucket_from_list,
     bucket_invitations,
@@ -41,6 +42,7 @@ app.include_router(buckets.router)
 app.include_router(bucket_invitations.router)
 app.include_router(bucket_comments.router)
 app.include_router(bucket_media.router)
+app.include_router(chat.router)
 app.include_router(concierge.router)
 app.include_router(plan_bucket_from_list.router)
 
