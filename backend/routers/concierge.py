@@ -1,6 +1,7 @@
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from database import supabase
 from browser_use_sdk.v3 import AsyncBrowserUse
 from services.llm_service import llm # Your centralized Gemini class
 from schemas import PlanBucketRequest, PlannedBucketCard, BucketDisplay
@@ -38,7 +39,8 @@ def format_bucket_cards(raw_scraped_data: str):
 @router.post("/plan-bucket")
 async def plan_bucket(request: PlanBucketRequest):
     try:
-        raw_scraped_data = await run_browser_use_plan(request.request_text, request.location)
+        user_location = supabase.table("users").select("location").eq("id", request.user_id).execute().data[0].get("location", "San Diego")
+        raw_scraped_data = await run_browser_use_plan(request.request_text, user_location)
         formatted_bucket = format_bucket_cards(raw_scraped_data)
 
         return {
