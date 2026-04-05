@@ -1,63 +1,65 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from auth import get_current_user_id, require_matching_user
 from browser_use_sdk.v3 import AsyncBrowserUse
+from database import supabase
 from services.llm_service import llm # Your centralized Gemini class
+from schemas import PlanBucketRequest, PlannedBucketCard, BucketDisplay
 
 router = APIRouter(prefix="/api/concierge", tags=["AI Concierge (Browser Use)"])
 
-# 1. What the frontend sends us
-class PlanBucketRequest(BaseModel):
-    user_id: str
-    request_text: str # e.g., "Find a highly rated wing spot"
-    location: str # e.g., "San Diego"
 
-# 2. What we return to the frontend to render the card
-class PlannedBucketCard(BaseModel):
-    title: str
-    location: str
-    hours: str
-    link: str
-    hype_message: str
+def get_user_location(user_id: str) -> str:
+    user_response = (
+        supabase.table("users")
+        .select("location")
+        .eq("id", user_id)
+        .execute()
+    )
+
+    if user_response.data:
+        return user_response.data[0].get("location", "San Diego")
+
+    return "San Diego"
+
+
+async def run_browser_use_plan(request_text: str, location: str) -> str:
+    client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
+    agent_task = (
+        f"Go to Yelp or Google Maps and search for: {request_text} in {location}. "
+        "Find three top-rated locations, or if the user provides another criteria, use that."
+        "Extract the exact Name, Address, Hours of Operation today, and a URL link to the business. "
+        "DO NOT attempt to make a reservation, click 'buy', or enter any personal information. "
+        "Return the extracted information as plain text."
+    )
+
+    result = await client.run(agent_task)
+    return result.output
+
+
+def format_bucket_cards(raw_scraped_data: str):
+    system_prompt = (
+        "You are the Bucket App Hype Guide. You just received raw, scraped data about three local businesses. "
+        "Format it perfectly into the requested JSON schema so the frontend can display it as Bucket Cards. "
+        "Add a short, energetic 'hype_message' to get the user excited to go."
+    )
+
+    return llm.generate_structured_response(
+        system_instruction=system_prompt,
+        user_prompt=raw_scraped_data,
+        response_schema=list[BucketDisplay]
+    )
 
 @router.post("/plan-bucket")
-async def plan_bucket(request: PlanBucketRequest):
+async def plan_bucket(request: PlanBucketRequest, auth_user_id: str = Depends(get_current_user_id)):
     try:
-        # 1. Initialize the Browser Use Cloud Client
-        # It automatically picks up the BROWSER_USE_API_KEY from your .env file
-        client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
+        require_matching_user(auth_user_id, request.user_id)
+        user_location = get_user_location(request.user_id)
 
-        # 2. Craft the strict instruction for the Cloud Agent
-        # The Hack: We explicitly tell it NOT to buy anything, just scrape.
-        agent_task = (
-            f"Go to Yelp or Google Maps and search for: {request.request_text} in {request.location}. "
-            "Find three top-rated locations, or if the user provides another criteria, use that."
-            "Extract the exact Name, Address, Hours of Operation today, and a URL link to the business. "
-            "DO NOT attempt to make a reservation, click 'buy', or enter any personal information. "
-            "Return the extracted information as plain text."
-        )
+        raw_scraped_data = await run_browser_use_plan(request.request_text, user_location)
+        formatted_bucket = format_bucket_cards(raw_scraped_data)
 
-        print("☁️ [2] Sending task to Browser Use Cloud... (This will take 15-45 seconds)")
-        # 3. Fire off the cloud task (No local Playwright needed!)
-        result = await client.run(agent_task)
-        raw_scraped_data = result.output
-
-        print("☁️ [3] Raw scraped data received from Browser Use")
-
-        # 4. Pass the raw scraped text to our trusted GeminiManager to format it perfectly
-        system_prompt = (
-            "You are the Bucket App Hype Guide. You just received raw, scraped data about three local businesses. "
-            "Format it perfectly into the requested JSON schema so the frontend can display it as Bucket Cards. "
-            "Add a short, energetic 'hype_message' to get the user excited to go."
-        )
-
-        formatted_bucket = llm.generate_structured_response(
-            system_instruction=system_prompt,
-            user_prompt=raw_scraped_data,
-            response_schema=list[PlannedBucketCard]
-        )
-
-        # 5. Return the perfect JSON to the frontend
         return {
             "status": "success",
             "message": "Browser Use cloud agent successfully scraped and formatted the event.",

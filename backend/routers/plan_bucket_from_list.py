@@ -1,24 +1,13 @@
-import os
+from fastapi import APIRouter, Depends, HTTPException
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from browser_use_sdk.v3 import AsyncBrowserUse
-
+from auth import get_current_user_id, require_matching_user
+from routers.concierge import format_bucket_cards, get_user_location, run_browser_use_plan
 from database import supabase
+from schemas import PlanBucketFromListRequest, SearchQuery
 from services.llm_service import llm
 
 
 router = APIRouter(prefix="/api", tags=["Plan Bucket From List"])
-
-
-class PlanBucketFromListRequest(BaseModel):
-    user_id: str
-    bucket_list_item_id: str
-    location: str = "San Diego"
-
-
-class SearchQuery(BaseModel):
-    request_text: str
 
 
 def _generate_search_text(bucket_title: str, location: str) -> str:
@@ -44,8 +33,9 @@ def _generate_search_text(bucket_title: str, location: str) -> str:
 
 
 @router.post("/plan-bucket-from-list")
-async def plan_bucket_from_list(request: PlanBucketFromListRequest):
+async def plan_bucket_from_list(request: PlanBucketFromListRequest, auth_user_id: str = Depends(get_current_user_id)):
     try:
+        require_matching_user(auth_user_id, request.user_id)
         bucket_item_response = (
             supabase.table("bucket_list_items")
             .select("*")
@@ -59,28 +49,18 @@ async def plan_bucket_from_list(request: PlanBucketFromListRequest):
 
         bucket_item = bucket_item_response.data[0]
         bucket_title = bucket_item.get("title", "activity")
-        request_text = _generate_search_text(bucket_title, request.location)
+        location = get_user_location(request.user_id)
+        request_text = _generate_search_text(bucket_title, location)
 
-        client = AsyncBrowserUse(os.getenv("BROWSER_USE_API_KEY"))
-        agent_task = (
-            f"Go to Yelp or Google Maps and search for: {request_text} in {request.location}. "
-            "Find three top-rated locations, or if the user provides another criteria, use that."
-            "Extract the exact Name, Address, Hours of Operation today, and a URL link to the business. "
-            "DO NOT attempt to make a reservation, click 'buy', or enter any personal information. "
-            "Return the extracted information as plain text."
-        )
-
-        result = await client.run(agent_task)
-        raw_scraped_data = result.output
+        raw_scraped_data = await run_browser_use_plan(request_text, location)
+        formatted_bucket = format_bucket_cards(raw_scraped_data)
 
         return {
             "status": "success",
-            "message": "Browser Use cloud agent successfully scraped the bucket list item.",
-            "data": {
-                "request_text": request_text,
-                "bucket_list_item_title": bucket_title,
-                "browser_use_output": raw_scraped_data,
-            },
+            "message": "Browser Use cloud agent successfully scraped and formatted the event.",
+            "data": formatted_bucket,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
