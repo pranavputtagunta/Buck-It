@@ -8,10 +8,10 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import { Home, ListTodo, Image as ImageIcon } from 'lucide-react-native';
+import { Home, ListTodo, Image as ImageIcon, User } from 'lucide-react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const TAB_COUNT = 3;
+const TAB_COUNT = 4; 
 const TAB_WIDTH = SCREEN_WIDTH / TAB_COUNT;
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
@@ -26,7 +26,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     }).start();
   }, [state.index, translateX]);
 
-  const icons = [Home, ListTodo, ImageIcon];
+  const icons = [Home, ListTodo, ImageIcon, User];
 
   return (
     <View style={styles.tabBar}>
@@ -108,6 +108,14 @@ export default function TabLayout() {
           title: 'Gallery',
         }}
       />
+
+      <Tabs.Screen 
+      name="profile" 
+      options={{ 
+        title: 'Profile', 
+        tabBarIcon: ({ color }) => <User size={28} color={color} /> 
+      }} 
+    />
     </Tabs>
   );
 }

@@ -132,3 +132,23 @@ async def create_or_update_profile(profile: ProfileCreate):
     except Exception as e:
         print(f"❌ ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+    # routers/users.py
+
+
+class AvailabilityUpdate(BaseModel):
+    user_id: str
+    available_slots: List[str]  # e.g., ["Mon-08:00", "Wed-14:00"]
+
+@router.post("/availability")
+async def update_availability(data: AvailabilityUpdate):
+    try:
+        # Save the exact time matrix to the user's profile
+        response = supabase.table("users").update({
+            "available_slots": data.available_slots
+        }).eq("id", data.user_id).execute()
+
+        return {"status": "success", "data": response.data}
+    except Exception as e:
+        print(f"Failed to save availability matrix: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
