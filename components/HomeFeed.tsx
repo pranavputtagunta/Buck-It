@@ -584,7 +584,10 @@ export default function HomeFeed() {
         </View>
 
         {isLoadingFeed ? (
-          <ActivityIndicator style={{ marginTop: 50 }} color={C.textPrimary} />
+          <View style={styles.loaderWrap}>
+            <ActivityIndicator color={C.textPrimary} />
+            <Text style={styles.loaderText}>populating your feed</Text>
+          </View>
         ) : feedType === "Events" ? (
           <FlatList
             data={
@@ -893,6 +896,16 @@ const styles = StyleSheet.create({
   switcherTabActive: { borderBottomWidth: 2, borderBottomColor: C.accentDark },
   switcherText: { fontSize: 14, fontWeight: "500", color: C.textMuted },
   switcherTextActive: { fontSize: 14, fontWeight: "700", color: C.textPrimary },
+  loaderWrap: {
+    marginTop: 50,
+    alignItems: "center",
+  },
+  loaderText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: C.textMuted,
+    fontWeight: "600",
+  },
   cardContainer: {
     marginBottom: 20,
     borderBottomWidth: 1,
