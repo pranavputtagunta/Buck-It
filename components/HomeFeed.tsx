@@ -34,6 +34,7 @@ import {
 import MapModule from "./MapModule";
 import { supabase } from "../app/lib/supabase";
 import { bucketService } from "../src/services/bucketService";
+import { API_BASE_URL } from "../src/services/apiClient";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
@@ -369,41 +370,69 @@ export default function HomeFeed() {
     if (!selectedItem || !userId) return;
     try {
       const isAIGen = selectedItem.mode === "AI_GEN";
-      const shareText = isAIGen
-        ? `@AI Suggested Event: ${selectedItem.user}'s memory at ${selectedItem.locationName} looks great. Can we find a time for the group?`
-        : `Check this out: ${selectedItem.title || selectedItem.locationName}`;
+      if (!isAIGen) {
+        const shareText = [
+          `Shared post from ${selectedItem.user || "Bucket Community"}`,
+          selectedItem.caption || selectedItem.title || "",
+          selectedItem.locationName
+            ? `Location: ${selectedItem.locationName}`
+            : "",
+          selectedItem.image ? `Image: ${selectedItem.image}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        await supabase.from("chat_messages").insert({
+          chat_id: chatId,
+          user_id: userId,
+          sender_name: userName,
+          text: shareText,
+          type: "user",
+        });
+
+        Alert.alert("Shared!", "Post sent to group chat.");
+        closeShareModal();
+        return;
+      }
 
       await supabase.from("chat_messages").insert({
         chat_id: chatId,
         user_id: userId,
         sender_name: userName,
-        text: shareText,
-        type: isAIGen ? "ai" : "user",
+        text: `Generate a bucket from this post: ${selectedItem.caption || selectedItem.title || selectedItem.locationName}`,
+        type: "user",
       });
 
-      // Pass context to Backend AI
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
-      await fetch(`${apiBase}/api/chat/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          sender_name: userName,
-          text: shareText,
-          metadata: isAIGen
-            ? {
-                tags: selectedItem.tags,
-                category: selectedItem.category,
-                location: selectedItem.locationName,
-              }
-            : null,
-        }),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/chat/share-post-as-ai-event`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            user_id: userId,
+            sender_name: userName,
+            post_user: selectedItem.user || "Bucket Community",
+            post_caption: selectedItem.caption || "",
+            post_location: selectedItem.locationName || "",
+            post_category: selectedItem.category || "",
+            post_image: selectedItem.image || "",
+          }),
+        },
+      );
 
-      Alert.alert("Shared!", "Sent to group chat.");
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          body?.detail || "Unable to generate AI bucket from this post.",
+        );
+      }
+
+      Alert.alert("Shared!", "AI bucket shared to group chat.");
       closeShareModal();
     } catch (err) {
       console.error(err);
+      Alert.alert("Share failed", "Please try again.");
     }
   };
 
