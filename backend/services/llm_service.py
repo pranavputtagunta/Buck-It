@@ -4,18 +4,24 @@ import os
 import json
 import google.generativeai as genai
 from typing import Type, Any, Optional
+from dotenv import load_dotenv
+from pathlib import Path
+
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 class GeminiManager:
     def __init__(self):
-        # Configure once when the class is instantiated
-        api_key = os.getenv("GEMINI_API_KEY")
-        gemini_model = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
-        if not api_key:
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.model_name = os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_NAME") or "gemini-1.5-flash"
+        self._configured = False
+
+    def _ensure_configured(self) -> None:
+        if not self.api_key:
             raise ValueError("GEMINI_API_KEY is missing from environment variables.")
-        genai.configure(api_key=api_key)
-        
-        # Default model for the hackathon (Flash is fast and cheap)
-        self.model_name = gemini_model
+        if not self._configured:
+            genai.configure(api_key=self.api_key)
+            self._configured = True
 
     def generate_structured_response(
         self, 
@@ -33,6 +39,8 @@ class GeminiManager:
         if user_context:
             context_string = json.dumps(user_context, indent=2)
             system_instruction += f"\n\n--- CURRENT USER CONTEXT ---\n{context_string}"
+
+        self._ensure_configured()
 
         # 2. Initialize the Model
         model = genai.GenerativeModel(

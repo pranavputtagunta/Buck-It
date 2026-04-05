@@ -1,16 +1,9 @@
 import os
-import json
-import google.generativeai as genai
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from database import supabase
 from services.llm_service import llm
 
 router = APIRouter(prefix="/api/onboard", tags=["AI Onboarding"])
-
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 
 class BucketGoal(BaseModel):
     title: str
