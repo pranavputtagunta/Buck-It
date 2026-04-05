@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  Alert,
-  SafeAreaView,
-  View,
-  StyleSheet,
-  ScrollView,
-  Animated,
-} from "react-native";
+import { Alert, View, StyleSheet, ScrollView, Animated } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../app/lib/supabase";
 import { C } from "./theme";
 import WelcomeStep from "./WelcomeStep";
@@ -21,6 +15,7 @@ export default function OnboardingFlow({
 }) {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingGoals, setIsGeneratingGoals] = useState(false);
   const animatedStep = useRef(new Animated.Value(0)).current;
 
   const [draft, setDraft] = useState({
@@ -31,7 +26,12 @@ export default function OnboardingFlow({
     personality: "",
     hobbiesInput: "",
     location: "",
-    bucketList: [] as any[],
+    bucketList: [] as {
+      title: string;
+      category?: string;
+      deadline: string;
+      source: "ai" | "manual";
+    }[],
   });
 
   useEffect(() => {
@@ -42,6 +42,87 @@ export default function OnboardingFlow({
       useNativeDriver: false,
     }).start();
   }, [animatedStep, step]);
+
+  const handleSuggestItems = async () => {
+    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+    if (!apiBase) {
+      Alert.alert(
+        "Missing API URL",
+        "EXPO_PUBLIC_API_BASE_URL is not configured.",
+      );
+      return;
+    }
+
+    const userAnswers = [
+      draft.personality.trim() && `Personality: ${draft.personality.trim()}`,
+      draft.hobbiesInput.trim() && `Hobbies: ${draft.hobbiesInput.trim()}`,
+      draft.location.trim() && `Location: ${draft.location.trim()}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (!userAnswers) {
+      Alert.alert(
+        "Need more context",
+        "Add your vibe details first so AI can suggest items.",
+      );
+      return;
+    }
+
+    try {
+      setIsGeneratingGoals(true);
+
+      const response = await fetch(`${apiBase}/api/onboard/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "onboarding-preauth",
+          user_answers: userAnswers,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Failed to suggest items");
+      }
+
+      const goals = Array.isArray(payload?.goals) ? payload.goals : [];
+      if (!goals.length) {
+        throw new Error("No goals returned");
+      }
+
+      const aiItems = goals.map((g: any) => ({
+        title: typeof g?.title === "string" ? g.title : "",
+        category: "",
+        deadline: typeof g?.deadline === "string" ? g.deadline : "",
+        source: "ai" as const,
+      }));
+
+      const manualItems = draft.bucketList.filter(
+        (item) => item.source === "manual",
+      );
+      setDraft((d) => ({ ...d, bucketList: [...aiItems, ...manualItems] }));
+    } catch (err: any) {
+      Alert.alert(
+        "Suggestion failed",
+        err?.message || "Could not generate items.",
+      );
+    } finally {
+      setIsGeneratingGoals(false);
+    }
+  };
+
+  const handleContinueToAccount = () => {
+    const validItems = draft.bucketList.filter((item) => item.title.trim());
+    if (!validItems.length) {
+      Alert.alert(
+        "Add at least one goal",
+        "Use Suggest Items or Add Manually before continuing.",
+      );
+      return;
+    }
+    setStep(3);
+  };
 
   // ─── LOGIC: Returning User ───
   const handleSignIn = async () => {
@@ -68,6 +149,8 @@ export default function OnboardingFlow({
     try {
       setIsSubmitting(true);
       const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+      if (!apiBase)
+        throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured");
 
       // 1. Supabase Auth Sign Up
       const { data, error } = await supabase.auth.signUp({
@@ -76,26 +159,59 @@ export default function OnboardingFlow({
       });
 
       if (error) throw error;
+      if (!data.user?.id) throw new Error("No user returned from sign up");
 
-      // 2. Sync Profile to Backend
-      const response = await fetch(`${apiBase}/api/users/profile`, {
+      const userId = data.user.id;
+
+      // 2. Create public user profile row
+      const createUserResponse = await fetch(`${apiBase}/api/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: data.user?.id,
-          username: draft.username.trim(),
-          personality: draft.personality.trim(),
-          location: draft.location.trim(),
-          hobbies: draft.hobbiesInput
-            .split(",")
-            .map((h) => h.trim())
-            .filter((h) => h !== ""),
-          bucket_list: draft.bucketList,
-          onboarding_data: {},
+          id: userId,
+          display_name: draft.username.trim(),
+          location: draft.location.trim() || "San Diego",
         }),
       });
 
-      if (!response.ok) throw new Error("Backend sync failed");
+      if (!createUserResponse.ok) {
+        const err = await createUserResponse.json().catch(() => ({}));
+        throw new Error(err?.detail || "Failed to create user profile");
+      }
+
+      const validGoals = draft.bucketList
+        .map((item) => ({
+          ...item,
+          title: item.title.trim(),
+          deadline: item.deadline?.trim() || null,
+        }))
+        .filter((item) => item.title);
+
+      // 3. Persist all onboarding list items in one bulk call
+      if (validGoals.length) {
+        const acceptedGoals = validGoals
+          .filter((item) => item.source === "ai")
+          .map((item) => ({ title: item.title, deadline: item.deadline }));
+
+        const customGoals = validGoals
+          .filter((item) => item.source !== "ai")
+          .map((item) => ({ title: item.title, deadline: item.deadline }));
+
+        const bulkResponse = await fetch(`${apiBase}/api/bucket-list/bulk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            accepted_goals: acceptedGoals,
+            custom_goals: customGoals,
+          }),
+        });
+
+        if (!bulkResponse.ok) {
+          const err = await bulkResponse.json().catch(() => ({}));
+          throw new Error(err?.detail || "Failed to save onboarding goals");
+        }
+      }
 
       onComplete();
     } catch (err: any) {
@@ -140,6 +256,8 @@ export default function OnboardingFlow({
         return (
           <BucketListStep
             bucketList={draft.bucketList}
+            onGenerateWithAI={handleSuggestItems}
+            generating={isGeneratingGoals}
             onUpdateBucket={(i: number, k: any, v: any) => {
               const n = [...draft.bucketList];
               n[i] = { ...n[i], [k]: v };
@@ -150,11 +268,11 @@ export default function OnboardingFlow({
                 ...d,
                 bucketList: [
                   ...d.bucketList,
-                  { title: "", category: "", deadline: "" },
+                  { title: "", category: "", deadline: "", source: "manual" },
                 ],
               }))
             }
-            onContinue={() => setStep(3)}
+            onContinue={handleContinueToAccount}
             onRemoveBucket={(indexToRemove: number) => {
               setDraft((d) => {
                 const newList = [...d.bucketList];
@@ -188,9 +306,12 @@ export default function OnboardingFlow({
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          step === 2 && styles.scrollContentStep3,
+        ]}
         keyboardShouldPersistTaps="handled"
-        scrollEnabled={false}
+        scrollEnabled={step === 2}
       >
         {renderStep()}
       </ScrollView>
@@ -228,6 +349,10 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
     flexGrow: 1,
     justifyContent: "center",
+  },
+  scrollContentStep3: {
+    justifyContent: "flex-start",
+    paddingBottom: 180,
   },
   pillRow: {
     flexDirection: "row",

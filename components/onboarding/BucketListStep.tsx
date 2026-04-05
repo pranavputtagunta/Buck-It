@@ -4,6 +4,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Modal,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Platform,
@@ -38,6 +40,28 @@ export default function BucketListStep({
   generating,
 }: Props) {
   const [activePicker, setActivePicker] = useState<number | null>(null);
+  const [pickerDate, setPickerDate] = useState<Date>(new Date());
+
+  const openDatePicker = (index: number) => {
+    const current = bucketList[index]?.deadline;
+    const parsed = current ? new Date(current) : new Date();
+    setPickerDate(Number.isNaN(parsed.getTime()) ? new Date() : parsed);
+    setActivePicker(index);
+  };
+
+  const closeDatePicker = () => {
+    setActivePicker(null);
+  };
+
+  const confirmDatePicker = () => {
+    if (activePicker === null) return;
+    onUpdateBucket(
+      activePicker,
+      "deadline",
+      pickerDate.toISOString().split("T")[0],
+    );
+    closeDatePicker();
+  };
 
   return (
     <View style={styles.container}>
@@ -65,7 +89,7 @@ export default function BucketListStep({
                   size={16}
                   style={{ marginRight: 6 }}
                 />
-                <Text style={styles.aiBtnText}>Suggest Goals</Text>
+                <Text style={styles.aiBtnText}>Suggest Items</Text>
               </>
             )}
           </TouchableOpacity>
@@ -82,7 +106,10 @@ export default function BucketListStep({
 
       {/* Goal cards */}
       {bucketList.map((item: any, i: number) => (
-        <View key={i} style={styles.card}>
+        <View
+          key={`${item.source || "manual"}-${item.title || "untitled"}-${i}`}
+          style={styles.card}
+        >
           <View style={styles.cardHeader}>
             <Text style={styles.cardIndex}>GOAL {i + 1}</Text>
             <TouchableOpacity
@@ -110,22 +137,22 @@ export default function BucketListStep({
                 value={item.deadline}
                 onChangeText={(t) => onUpdateBucket(i, "deadline", t)}
                 placeholder="Deadline (YYYY-MM-DD)"
-                placeholderTextColor={C.textLight}
+                placeholderTextColor={C.textPrimary}
                 style={styles.fieldInput}
               />
             </View>
           ) : (
             <TouchableOpacity
               style={styles.dateRow}
-              onPress={() => setActivePicker(i)}
+              onPress={() => openDatePicker(i)}
               activeOpacity={0.7}
             >
               <Calendar size={15} color={C.accent} style={{ marginRight: 8 }} />
               <Text
                 style={{
-                  color: item.deadline ? C.textPrimary : C.textLight,
+                  color: C.textPrimary,
                   fontSize: 14,
-                  fontWeight: "500",
+                  fontWeight: "700",
                 }}
               >
                 {item.deadline || "Set a target date"}
@@ -135,26 +162,48 @@ export default function BucketListStep({
         </View>
       ))}
 
-      {activePicker !== null && Platform.OS !== "web" && (
-        <DateTimePicker
-          value={
-            bucketList[activePicker]?.deadline
-              ? new Date(bucketList[activePicker].deadline)
-              : new Date()
-          }
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          minimumDate={new Date()}
-          onChange={(e: any, d?: Date) => {
-            setActivePicker(null);
-            if (d && e.type === "set")
-              onUpdateBucket(
-                activePicker,
-                "deadline",
-                d.toISOString().split("T")[0],
-              );
-          }}
-        />
+      {Platform.OS !== "web" && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={activePicker !== null}
+          onRequestClose={closeDatePicker}
+        >
+          <Pressable style={styles.modalOverlay} onPress={closeDatePicker}>
+            <Pressable style={styles.modalCard} onPress={() => {}}>
+              <Text style={styles.modalTitle}>Select target date</Text>
+              <DateTimePicker
+                value={pickerDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "calendar"}
+                textColor={C.textPrimary}
+                themeVariant="light"
+                minimumDate={new Date()}
+                onChange={(e: any, d?: Date) => {
+                  if (e?.type === "dismissed") {
+                    closeDatePicker();
+                    return;
+                  }
+                  if (d) setPickerDate(d);
+                }}
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalButtonGhost}
+                  onPress={closeDatePicker}
+                >
+                  <Text style={styles.modalButtonGhostText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonPrimary}
+                  onPress={confirmDatePicker}
+                >
+                  <Text style={styles.modalButtonPrimaryText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       )}
 
       {/* Continue */}
@@ -286,5 +335,56 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 15,
     letterSpacing: 0.1,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(26, 24, 20, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: "100%",
+    backgroundColor: C.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: C.textPrimary,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 6,
+  },
+  modalButtonGhost: {
+    backgroundColor: C.accentLight,
+    borderWidth: 1,
+    borderColor: C.borderMid,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  modalButtonGhostText: {
+    color: C.accentDark,
+    fontWeight: "600",
+  },
+  modalButtonPrimary: {
+    backgroundColor: C.accentDark,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  modalButtonPrimaryText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });
