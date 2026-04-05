@@ -1,21 +1,23 @@
-import React, { useEffect, useRef } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs } from "expo-router";
+import { Home, Image as ImageIcon, ListTodo, User } from "lucide-react-native";
+import React, { useEffect, useRef } from "react";
 import {
-  View,
-  TouchableOpacity,
-  StyleSheet,
   Animated,
-  Platform,
   Dimensions,
-} from 'react-native';
-import { Home, ListTodo, Image as ImageIcon, User } from 'lucide-react-native';
+  Platform,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const TAB_COUNT = 4; 
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const TAB_COUNT = 4;
 const TAB_WIDTH = SCREEN_WIDTH / TAB_COUNT;
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
-  const translateX = useRef(new Animated.Value(state.index * TAB_WIDTH)).current;
+  const translateX = useRef(
+    new Animated.Value(state.index * TAB_WIDTH),
+  ).current;
 
   useEffect(() => {
     Animated.spring(translateX, {
@@ -45,7 +47,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
         const onPress = () => {
           const event = navigation.emit({
-            type: 'tabPress',
+            type: "tabPress",
             target: route.key,
             canPreventDefault: true,
           });
@@ -57,7 +59,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
         const onLongPress = () => {
           navigation.emit({
-            type: 'tabLongPress',
+            type: "tabLongPress",
             target: route.key,
           });
         };
@@ -67,14 +69,16 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             key={route.key}
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={descriptors[route.key]?.options?.tabBarAccessibilityLabel}
+            accessibilityLabel={
+              descriptors[route.key]?.options?.tabBarAccessibilityLabel
+            }
             testID={descriptors[route.key]?.options?.tabBarButtonTestID}
             onPress={onPress}
             onLongPress={onLongPress}
             activeOpacity={0.9}
             style={styles.tabButton}
           >
-            <Icon size={28} color={isFocused ? '#fff' : '#888'} />
+            <Icon size={28} color={isFocused ? "#fff" : "#888"} />
           </TouchableOpacity>
         );
       })}
@@ -93,61 +97,61 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: "Home",
         }}
       />
       <Tabs.Screen
         name="bucketlist"
         options={{
-          title: 'Bucket List',
+          title: "Bucket List",
         }}
       />
       <Tabs.Screen
         name="gallery"
         options={{
-          title: 'Gallery',
+          title: "Gallery",
         }}
       />
 
-      <Tabs.Screen 
-      name="profile" 
-      options={{ 
-        title: 'Profile', 
-        tabBarIcon: ({ color }) => <User size={28} color={color} /> 
-      }} 
-    />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color }) => <User size={28} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
-    flexDirection: 'row',
-    height: Platform.OS === 'ios' ? 84 : 64,
-    backgroundColor: '#000',
+    flexDirection: "row",
+    height: Platform.OS === "ios" ? 84 : 64,
+    backgroundColor: "#000",
     borderTopWidth: 0,
     elevation: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: -2 },
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-    position: 'relative',
+    paddingBottom: Platform.OS === "ios" ? 20 : 0,
+    position: "relative",
   },
   tabButton: {
     width: TAB_WIDTH,
-    height: Platform.OS === 'ios' ? 64 : 64,
-    justifyContent: 'center',
-    alignItems: 'center',
+    height: Platform.OS === "ios" ? 64 : 64,
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 2,
   },
   activeIndicator: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 20 : 0,
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 20 : 0,
     left: TAB_WIDTH * 0.18,
     width: TAB_WIDTH * 0.64,
     height: 4,
     borderRadius: 999,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
 });

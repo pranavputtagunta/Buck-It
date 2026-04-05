@@ -1,6 +1,15 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from routers import onboard, bucket_list, buckets, users
+from routers import (
+    onboard,
+    bucket_list,
+    buckets,
+    users,
+    concierge,
+    plan_bucket_from_list,
+    bucket_invitations,
+    bucket_comments,
+    bucket_media,
+)
 
 app = FastAPI(
     title="Bucket App API",
@@ -28,7 +37,17 @@ app.include_router(onboard.router)
 app.include_router(users.router)
 app.include_router(bucket_list.router)
 app.include_router(buckets.router)
+app.include_router(bucket_invitations.router)
+app.include_router(bucket_comments.router)
+app.include_router(bucket_media.router)
+app.include_router(concierge.router)
+app.include_router(plan_bucket_from_list.router)
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Bucket App Backend!"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

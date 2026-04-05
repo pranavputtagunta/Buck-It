@@ -1,18 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List
 from database import supabase
+<<<<<<< HEAD
 from typing import List, Optional, Dict, Any
+=======
+from schemas import BadgeUpdate, UserCreate, UserUpdate
+>>>>>>> backend
 
 # All routes here automatically start with /api/users
 router = APIRouter(prefix="/api/users", tags=["Users"])
-
-class BadgeUpdate(BaseModel):
-    badges: List[str]
-    
-class UserCreate(BaseModel):
-    id: str
-    display_name: str
 
 @router.get("/{user_id}")
 async def get_user(user_id: str):
@@ -20,6 +15,8 @@ async def get_user(user_id: str):
     try:
         response = supabase.table("users").select("*").eq("id", user_id).execute()
         return {"status": "success", "data": response.data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -29,6 +26,23 @@ async def update_user_badges(user_id: str, update: BadgeUpdate):
     try:
         response = supabase.table("users").update({"badges": update.badges}).eq("id", user_id).execute()
         return {"status": "success", "data": response.data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{user_id}")
+async def update_user(user_id: str, update: UserUpdate):
+    try:
+        update_data = update.model_dump(exclude_none=True)
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No user fields provided to update")
+
+        response = supabase.table("users").update(update_data).eq("id", user_id).execute()
+        return {"status": "success", "data": response.data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -40,12 +54,15 @@ async def add_user_badge(user: UserCreate):
         user_response = supabase.table("users").insert({
             "id": user.id,
             "display_name": user.display_name,
+            "location": user.location,
             "badges": []
         }).execute()
 
         print("SUPABASE INSERT RESPONSE:", user_response.data)
 
         return {"status": "success", "data": user_response.data}
+    except HTTPException:
+        raise
     except Exception as e:
         print("INSERT FAILED:", str(e))
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,20 +2,26 @@
 
 import os
 import json
-import google.generativeai as genai
 from typing import Type, Any, Optional
+from dotenv import load_dotenv
+from pathlib import Path
+from google import genai
+from google.genai import types
+
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 class GeminiManager:
     def __init__(self):
-        # Configure once when the class is instantiated
-        api_key = os.getenv("GEMINI_API_KEY")
-        gemini_model = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
-        if not api_key:
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.model_name = os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_NAME") or "gemini-1.5-flash"
+        self._client = None
+
+    def _ensure_client(self) -> None:
+        if not self.api_key:
             raise ValueError("GEMINI_API_KEY is missing from environment variables.")
-        genai.configure(api_key=api_key)
-        
-        # Default model for the hackathon (Flash is fast and cheap)
-        self.model_name = gemini_model
+        if self._client is None:
+            self._client = genai.Client(api_key=self.api_key)
 
     def generate_structured_response(
         self, 
@@ -34,23 +40,21 @@ class GeminiManager:
             context_string = json.dumps(user_context, indent=2)
             system_instruction += f"\n\n--- CURRENT USER CONTEXT ---\n{context_string}"
 
-        # 2. Initialize the Model
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=system_instruction
-        )
+        self._ensure_client()
 
-        # 3. Call the API and force the Pydantic schema
-        response = model.generate_content(
-            user_prompt,
-            generation_config=genai.GenerationConfig(
+        # 2. Call the API and force the schema-backed JSON output
+        response = self._client.models.generate_content(
+            model=self.model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
                 response_mime_type="application/json",
                 response_schema=response_schema,
-                temperature=0.7, 
-            )
+                temperature=0.7,
+            ),
         )
 
-        # 4. Parse and return the JSON dictionary
+        # 3. Parse and return the JSON dictionary
         return json.loads(response.text)
 
 # Create a singleton instance to import across your app
