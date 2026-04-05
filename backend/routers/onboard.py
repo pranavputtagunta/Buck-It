@@ -34,22 +34,7 @@ async def onboard_user(request: OnboardRequest):
             user_prompt=request.user_answers,
             response_schema=list[BucketGoal]
         )
-
-        # model = genai.GenerativeModel(
-        #     model_name=MODEL_NAME,
-        #     system_instruction=system_instruction
-        # )
-
-        # response = model.generate_content(
-        #     request.user_answers,
-        #     generation_config=genai.GenerationConfig(
-        #         response_mime_type="application/json",
-        #         response_schema=list[BucketGoal],
-        #         temperature=0.7,
-        #     )
-        # )
-
-        # generated_goals = json.loads(response.text)
+        
         return {
             "status": "success", 
             "goals": ai_response
