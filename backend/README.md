@@ -45,7 +45,7 @@ FastAPI backend for users, bucket lists, buckets, invitations, onboarding, and A
 
 1. Install `backend/requirements.txt`.
 2. Fill in `backend/.env`.
-3. Run [backend/schema.sql](backend/schema.sql) in Supabase to create the required tables.
+3. Make sure your existing Supabase project has the tables this backend expects.
 4. Run the API from the `backend` folder.
 
 ## Environment Variables
@@ -57,11 +57,9 @@ FastAPI backend for users, bucket lists, buckets, invitations, onboarding, and A
 - `GEMINI_API_KEY`
 - `BROWSER_USE_API_KEY`
 
-## Authentication
+## Access
 
-- All `/api/*` routes that act on user data now expect `Authorization: Bearer <supabase-access-token>`.
-- The backend resolves the authenticated user from the Supabase access token and rejects requests where the token user does not match the `user_id`, `actor_id`, `creator_id`, or `inviter_id` supplied in the request.
-- `GET /health` and `GET /` do not require authentication.
+- `GET /health` and `GET /` remain public.
 
 ## Run Command
 
@@ -72,6 +70,12 @@ From the `backend` folder:
 ```
 
 ## Quick Checks
+
+### Backend Audit Suite
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests.test_backend_audit -v
+```
 
 ### Health
 
@@ -99,31 +103,28 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/api/plan-bucket-from-list -Method P
 ### Join a Public Bucket
 
 ```powershell
-$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
 $body = @{
     actor_id = '<user-id>'
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://127.0.0.1:8000/api/buckets/<bucket-id>/join -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/buckets/<bucket-id>/join -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
 ```
 
 ### Add a Bucket Comment
 
 ```powershell
-$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
 $body = @{
     bucket_id = '<bucket-id>'
     actor_id = '<user-id>'
     content = 'I can bring snacks.'
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-comments/ -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-comments/ -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
 ```
 
 ### Add Bucket Media Metadata
 
 ```powershell
-$headers = @{ Authorization = 'Bearer <supabase-access-token>' }
 $body = @{
     bucket_id = '<bucket-id>'
     actor_id = '<user-id>'
@@ -132,7 +133,7 @@ $body = @{
     caption = 'Sunrise was worth it.'
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-media/ -Method Post -Headers $headers -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/bucket-media/ -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
 ```
 
 ## Notes

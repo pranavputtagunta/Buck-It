@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from auth import get_current_user_id, require_matching_user
 from database import supabase
 
 
@@ -102,9 +101,8 @@ def _get_bucket(bucket_id: str) -> dict:
 
 
 @router.post("/")
-async def create_bucket_invitation(payload: BucketInvitationCreate, auth_user_id: str = Depends(get_current_user_id)):
+async def create_bucket_invitation(payload: BucketInvitationCreate):
     try:
-        require_matching_user(auth_user_id, payload.inviter_id)
         bucket = _get_bucket(payload.bucket_id)
         if bucket["creator_id"] != payload.inviter_id:
             raise HTTPException(status_code=403, detail="Only the bucket creator can send invitations")
@@ -123,9 +121,8 @@ async def create_bucket_invitation(payload: BucketInvitationCreate, auth_user_id
 
 
 @router.get("/user/{user_id}")
-async def get_user_bucket_invitations(user_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def get_user_bucket_invitations(user_id: str):
     try:
-        require_matching_user(auth_user_id, user_id)
         response = (
             supabase.table("bucket_invitations")
             .select("*")
@@ -134,14 +131,15 @@ async def get_user_bucket_invitations(user_id: str, auth_user_id: str = Depends(
             .execute()
         )
         return {"status": "success", "data": response.data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.patch("/{invitation_id}")
-async def respond_to_bucket_invitation(invitation_id: str, payload: BucketInvitationDecision, auth_user_id: str = Depends(get_current_user_id)):
+async def respond_to_bucket_invitation(invitation_id: str, payload: BucketInvitationDecision):
     try:
-        require_matching_user(auth_user_id, payload.actor_id)
         if payload.status not in {"accepted", "declined", "cancelled"}:
             raise HTTPException(status_code=400, detail="Status must be accepted, declined, or cancelled")
 
@@ -174,9 +172,8 @@ async def respond_to_bucket_invitation(invitation_id: str, payload: BucketInvita
 
 
 @router.delete("/{invitation_id}")
-async def delete_bucket_invitation(invitation_id: str, actor_id: str, auth_user_id: str = Depends(get_current_user_id)):
+async def delete_bucket_invitation(invitation_id: str, actor_id: str):
     try:
-        require_matching_user(auth_user_id, actor_id)
         invitation = _get_invitation(invitation_id)
         bucket = _get_bucket(invitation["bucket_id"])
 
