@@ -197,6 +197,45 @@ class BackendAuditTests(unittest.TestCase):
         self.assertEqual(protected.status_code, 200)
         self.assertEqual(protected.json()["status"], "success")
 
+    def test_user_bucket_list_and_discover_routes_are_open(self):
+        fake = FakeSupabase({
+            "users": [{"id": "user-1", "display_name": "Pranav", "location": "San Diego", "badges": []}],
+            "bucket_list_items": [{
+                "id": "item-1",
+                "user_id": "user-1",
+                "title": "Find great tacos",
+                "deadline": None,
+            }],
+            "buckets": [{
+                "id": "bucket-1",
+                "creator_id": "other-user",
+                "title": "Taco Tuesday",
+                "category": "Food",
+                "event_time": "2026-06-15T18:00:00+00:00",
+                "status": "planned",
+                "visibility": "public",
+                "created_at": "2026-04-04T12:00:00+00:00",
+            }],
+            "bucket_members": [],
+            "bucket_invitations": [],
+        })
+
+        patches = self._module_patches(fake)
+        for item in patches:
+            item.start()
+        self.addCleanup(lambda: [item.stop() for item in reversed(patches)])
+
+        user_response = self.client.get("/api/users/user-1")
+        bucket_list_response = self.client.get("/api/bucket-list/user-1")
+        discover_response = self.client.get("/api/buckets/discover/user-1")
+
+        self.assertEqual(user_response.status_code, 200)
+        self.assertEqual(bucket_list_response.status_code, 200)
+        self.assertEqual(discover_response.status_code, 200)
+        self.assertEqual(user_response.json()["status"], "success")
+        self.assertEqual(bucket_list_response.json()["status"], "success")
+        self.assertEqual(discover_response.json()["status"], "success")
+
     def test_create_bucket_adds_creator_membership_and_is_visible(self):
         fake = FakeSupabase({
             "users": [{"id": "user-1", "display_name": "Pranav", "location": "San Diego", "badges": []}],

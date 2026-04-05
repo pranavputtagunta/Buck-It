@@ -59,6 +59,9 @@ FastAPI backend for users, bucket lists, buckets, invitations, onboarding, and A
 
 ## Access
 
+- All API routes are intentionally open and do not use login or bearer tokens.
+- The backend trusts client-provided `user_id` and `actor_id` values.
+- Access control is handled by app rules such as creator ownership, bucket membership, and invitation status.
 - `GET /health` and `GET /` remain public.
 
 ## Run Command
