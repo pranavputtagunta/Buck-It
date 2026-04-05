@@ -1,0 +1,18 @@
+from fastapi import FastAPI
+from routers import onboard, bucket_list, buckets, users
+
+app = FastAPI(
+    title="Bucket App API",
+    description="The backend engine for the future of social media.",
+    version="1.0.0"
+)
+
+# Plug in all your modular routers
+app.include_router(onboard.router)
+app.include_router(users.router)
+app.include_router(bucket_list.router)
+app.include_router(buckets.router)
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Bucket App Backend!"}
