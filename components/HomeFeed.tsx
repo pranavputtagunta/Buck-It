@@ -28,7 +28,6 @@ import {
   Heart,
   MessageCircle,
   Bookmark,
-  LogOut,
   Sparkles,
 } from "lucide-react-native";
 import MapModule from "./MapModule";
@@ -268,10 +267,6 @@ export default function HomeFeed() {
   }, []);
 
   // ─── Handlers ───
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
 
   const toggleMap = (id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -547,7 +542,7 @@ export default function HomeFeed() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.logoText}>Bucket</Text>
+          <Text style={styles.logoText}>Buck-It</Text>
           <View style={styles.headerIcons}>
             {feedType === "Events" && (
               <TouchableOpacity style={styles.iconBtn} onPress={openFilter}>
@@ -565,9 +560,6 @@ export default function HomeFeed() {
               onPress={() => router.push("/messages")}
             >
               <Send color={C.textPrimary} size={24} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={handleLogout}>
-              <LogOut color={C.textMuted} size={22} />
             </TouchableOpacity>
           </View>
         </View>
