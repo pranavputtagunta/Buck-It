@@ -205,7 +205,22 @@ export default function HomeFeed() {
         type: 'ai'
       });
 
-      // 6. Push to Chat
+      // 6. Push event to the 'events' table for the Action Center / Gallery tab
+      const { error: eventError } = await supabase.from('events').insert({
+        user_id: userId,
+        title: item.title,
+        status_text: 'Awaiting RSVPs — AI coordinating times',
+        participants: participantsToInsert.length,
+        is_active: false, // False means it's a "Planned" event, not currently happening
+        completed: false,
+      });
+
+      if (eventError) {
+        console.error("Event Sync Error:", eventError);
+        // We don't throw here so it still redirects to the chat even if the event sync fails
+      }
+
+      // 7. Push to Chat
       router.push({
         pathname: '/chat/[id]',
         params: { id: newChatId, title: item.title }
