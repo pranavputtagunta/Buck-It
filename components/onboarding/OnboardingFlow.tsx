@@ -53,8 +53,6 @@ export default function OnboardingFlow({
       });
 
       if (error) throw error;
-
-      // Successfully signed in
       onComplete();
     } catch (err: any) {
       Alert.alert("Sign In Failed", err.message);
@@ -76,26 +74,49 @@ export default function OnboardingFlow({
       });
 
       if (error) throw error;
+      const userId = data.user?.id;
 
       // 2. Sync Profile to Backend
       const response = await fetch(`${apiBase}/api/users/profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: data.user?.id,
+          id: userId,
           username: draft.username.trim(),
           personality: draft.personality.trim(),
           location: draft.location.trim(),
-          hobbies: draft.hobbiesInput
+          // FIX 1: Map 'hobbiesInput' to the 'interests' column
+          interests: draft.hobbiesInput
             .split(",")
             .map((h) => h.trim())
             .filter((h) => h !== ""),
-          bucket_list: draft.bucketList,
           onboarding_data: {},
         }),
       });
 
       if (!response.ok) throw new Error("Backend sync failed");
+
+      // FIX 2: Loop through drafted bucket list and push to the AI Tagging endpoint
+      if (draft.bucketList && draft.bucketList.length > 0) {
+        for (const item of draft.bucketList) {
+          if (!item.title.trim()) continue; // Skip empty inputs
+          
+          try {
+            await fetch(`${apiBase}/api/buckets/list-items`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                user_id: userId, 
+                title: item.title, 
+                deadline: item.deadline || null 
+              }),
+            });
+          } catch (bucketErr) {
+            console.error("Failed to add initial bucket item:", bucketErr);
+            // We catch the error but don't throw, so the user still finishes onboarding
+          }
+        }
+      }
 
       onComplete();
     } catch (err: any) {
@@ -116,7 +137,7 @@ export default function OnboardingFlow({
             }}
             onReturningUser={() => {
               setDraft((d) => ({ ...d, mode: "returning" }));
-              setStep(3); // Skip Vibe/Bucket steps for returning users
+              setStep(3);
             }}
           />
         );
@@ -175,7 +196,6 @@ export default function OnboardingFlow({
             onChangePassword={(v: string) =>
               setDraft((d) => ({ ...d, password: v }))
             }
-            // Switch function based on mode
             onSubmit={draft.mode === "new" ? handleCreateAccount : handleSignIn}
             submitting={isSubmitting}
           />
