@@ -73,7 +73,7 @@ interface BucketItem { id: string; title: string; category: string; }
 interface Story { id: string; name: string; image: string; }
 interface EventItem {
   id: string; user: string; locationName: string; coords: { latitude: number; longitude: number };
-  title: string; image: string; deadline: string; bucketItemId: string; tags: string[]; time_slots: string[];
+  title: string; image: string; deadline: string; bucketItemId: string; tags: string[]; category?: string; time_slots: string[];
 }
 interface PostItem {
   id: string; user: string; locationName: string; caption: string; image: string; likes: number; tags: string[]; category: string;
@@ -142,28 +142,27 @@ export default function HomeFeed() {
           })));
         }
 
-        // 4. Fetch Events directly from the `events` table
-        const { data: eventsData } = await supabase.from("events").select("*, users(display_name)").eq("completed", false);
+        // 4. Fetch Events directly from discover_events
+        const { data: discoverEventsData } = await supabase.from("discover_events").select("*");
         
-        if (eventsData) {
-          const formatted: EventItem[] = eventsData.map((ev) => {
-            // Safely parse photos array if it exists, otherwise fallback
-            const imageUrl = Array.isArray(ev.photos) && ev.photos.length > 0 
-              ? ev.photos[0] 
-              : 'https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=800';
+        if (discoverEventsData) {
+          const formatted: EventItem[] = discoverEventsData.map((ev) => {
+            const imageUrl = ev.image || 'https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=800';
 
             return {
               id: ev.id,
-              user: ev.users?.display_name || "Community Member",
-              locationName: "San Diego", // Fallback location since events table doesn't have it natively
-              coords: { latitude: 32.7157, longitude: -117.1611 },
+              user: "Bucket Community",
+              locationName: ev.location_name || "San Diego", 
+              coords: { latitude: ev.latitude || 32.7157, longitude: ev.longitude || -117.1611 },
               title: ev.title,
               image: imageUrl,
-              deadline: ev.status_text || "Awaiting RSVPs",
-              bucketItemId: ev.id,
-              tags: [],
-              time_slots: [],
-              _searchString: `${ev.title} ${ev.status_text || ""}`,
+              deadline: ev.deadline || "Join anytime",
+              bucketItemId: ev.bucket_item_id,
+              tags: ev.tags || [],         // Pull tags from discover_events
+              category: "General",         // discover_events doesn't have a category column, so we default it
+              time_slots: ev.time_slots || [], 
+              // THE MAGIC HAPPENS HERE: Fuse reads title and tags to rank events
+              _searchString: `${ev.title} ${(ev.tags || []).join(" ")}`,
             } as any;
           });
 
@@ -217,8 +216,17 @@ export default function HomeFeed() {
       await supabase.from("chat_messages").insert({
         chat_id: chatData.id, sender_name: "Buck-it Agent", text: `Group created for **${item.title}**! Analyzing availability... ✨`, type: "ai",
       });
+      
+      // ─── PUSH TAGS & CATEGORY TO EVENTS TABLE ───
       await supabase.from("events").insert({
-        user_id: userId, title: item.title, status_text: "Awaiting RSVPs", participants: participants.length, is_active: false, completed: false,
+        user_id: userId, 
+        title: item.title, 
+        status_text: "Awaiting RSVPs", 
+        participants: participants.length, 
+        is_active: false, 
+        completed: false,
+        category: item.category || "General", 
+        tags: item.tags || [],                
       });
 
       router.push({ pathname: "/chat/[id]", params: { id: chatData.id, title: item.title } });
