@@ -141,6 +141,7 @@ export default function HomeFeed() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [lockingId, setLockingId] = useState<string | null>(null);
+  const [copyingPostId, setCopyingPostId] = useState<string | null>(null);
   const [recommendedEvents, setRecommendedEvents] = useState<EventItem[]>([]);
   const [dbPosts, setDbPosts] = useState<PostItem[]>([]);
   const [availableChats, setAvailableChats] = useState<any[]>([]);
@@ -405,6 +406,38 @@ export default function HomeFeed() {
     }
   };
 
+  const handleCopyPostToMyBuckets = async (item: PostItem) => {
+    if (!userId || copyingPostId) return;
+
+    setCopyingPostId(item.id);
+    try {
+      const normalizedTitle =
+        item.caption?.trim() || `${item.category} in ${item.locationName}`;
+      const statusText = `Inspired by ${item.user}'s completed bucket`;
+
+      const { error } = await supabase.from("events").insert({
+        user_id: userId,
+        title: normalizedTitle,
+        status_text: statusText,
+        participants: 1,
+        is_active: false,
+        completed: false,
+      });
+
+      if (error) throw error;
+
+      Alert.alert(
+        "Added to your buckets",
+        "This activity is now in your Planning tab.",
+      );
+    } catch (err) {
+      console.error("Failed to copy post to buckets:", err);
+      Alert.alert("Could not copy", "Please try again.");
+    } finally {
+      setCopyingPostId(null);
+    }
+  };
+
   // ─── Renderers ───
 
   const renderEvent = ({ item }: ListRenderItemInfo<EventItem>) => (
@@ -491,6 +524,21 @@ export default function HomeFeed() {
           <Text style={styles.captionUser}>{item.user} </Text>
           {item.caption}
         </Text>
+        <TouchableOpacity
+          style={[
+            styles.inspireBtn,
+            copyingPostId === item.id && { opacity: 0.7 },
+          ]}
+          onPress={() => handleCopyPostToMyBuckets(item)}
+          disabled={copyingPostId === item.id}
+          activeOpacity={0.8}
+        >
+          {copyingPostId === item.id ? (
+            <ActivityIndicator color={C.accentDark} size="small" />
+          ) : (
+            <Text style={styles.inspireBtnText}>Do this activity</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -897,6 +945,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   captionUser: { fontWeight: "700" },
+  inspireBtn: {
+    marginTop: 12,
+    marginHorizontal: 14,
+    backgroundColor: C.accentLight,
+    borderWidth: 1,
+    borderColor: C.borderMid,
+    borderRadius: 10,
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  inspireBtnText: {
+    color: C.accentDark,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(26,24,20,0.45)",

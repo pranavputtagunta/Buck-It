@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { supabase } from "../../app/lib/supabase";
 import Fuse from "fuse.js";
 
@@ -204,10 +205,12 @@ function GoalCard({
   item,
   onToggle,
   onRemove,
+  onFindPlan,
 }: {
   item: BucketItem;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onFindPlan: (item: BucketItem) => void;
 }) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -300,6 +303,7 @@ function GoalCard({
           <TouchableOpacity
             style={[styles.planBtn, { borderColor: colors.border }]}
             activeOpacity={0.7}
+            onPress={() => onFindPlan(item)}
           >
             <Text style={[styles.planBtnText, { color: colors.accent }]}>
               Find a plan →
@@ -314,6 +318,7 @@ function GoalCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function BucketListScreen() {
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [goals, setGoals] = useState<BucketItem[]>([]);
 
@@ -473,6 +478,17 @@ export default function BucketListScreen() {
     }, 700);
   };
 
+  const handleFindPlan = (item: BucketItem) => {
+    router.push({
+      pathname: "/(tabs)/gallery",
+      params: {
+        conciergeOpen: "1",
+        bucketItemId: item.id,
+        bucketItemTitle: item.title,
+      },
+    });
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView
@@ -588,6 +604,7 @@ export default function BucketListScreen() {
                   item={item}
                   onToggle={toggleGoal}
                   onRemove={removeGoal}
+                  onFindPlan={handleFindPlan}
                 />
               </>
             );

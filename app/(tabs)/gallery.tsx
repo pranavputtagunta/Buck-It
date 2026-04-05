@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
   Modal,
   Pressable,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   Users,
   Camera,
@@ -259,6 +261,11 @@ function StandardCard({ item, tab }: { item: ActionItem; tab: TabType }) {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function GalleryScreen() {
+  const params = useLocalSearchParams<{
+    conciergeOpen?: string;
+    bucketItemId?: string;
+    bucketItemTitle?: string;
+  }>();
   const [activeTab, setActiveTab] = useState<TabType>("Planned");
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -277,6 +284,9 @@ export default function GalleryScreen() {
     string | null
   >(null);
   const [selectedBucketItemTitle, setSelectedBucketItemTitle] = useState("");
+  const [lastAppliedParamKey, setLastAppliedParamKey] = useState<string | null>(
+    null,
+  );
   const [conciergeResults, setConciergeResults] = useState<ConciergeCard[]>([]);
   const [isConciergeLoading, setIsConciergeLoading] = useState(false);
   const [isAcceptingConcierge, setIsAcceptingConcierge] = useState(false);
@@ -325,31 +335,66 @@ export default function GalleryScreen() {
     mapEventsToTabs(data || []);
   };
 
-  useEffect(() => {
-    const loadActionCenterData = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) {
-        setIsLoading(false);
-        return;
-      }
-
-      setUserId(session.user.id);
-
-      const { data: listData } = await supabase
-        .from("bucket_list_items")
-        .select("id, title")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      setBucketListItems((listData || []) as BucketListLite[]);
-
-      await fetchEvents(session.user.id);
+  const loadActionCenterData = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.user) {
       setIsLoading(false);
-    };
+      return;
+    }
 
-    loadActionCenterData();
+    setUserId(session.user.id);
+
+    const { data: listData } = await supabase
+      .from("bucket_list_items")
+      .select("id, title")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false });
+    setBucketListItems((listData || []) as BucketListLite[]);
+
+    await fetchEvents(session.user.id);
+    setIsLoading(false);
   }, []);
+
+  useEffect(() => {
+    loadActionCenterData();
+  }, [loadActionCenterData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadActionCenterData();
+    }, [loadActionCenterData]),
+  );
+
+  useEffect(() => {
+    const shouldOpenConcierge = params.conciergeOpen === "1";
+    const paramBucketId = params.bucketItemId;
+    const paramBucketTitle = params.bucketItemTitle;
+
+    if (!shouldOpenConcierge || !paramBucketId || !userId) return;
+
+    const paramKey = `${paramBucketId}:${paramBucketTitle || ""}`;
+    if (lastAppliedParamKey === paramKey) return;
+
+    const matched = bucketListItems.find((item) => item.id === paramBucketId);
+
+    setIsConciergeOpen(true);
+    setActiveTab("Planned");
+    setSelectedBucketItemId(paramBucketId);
+    setSelectedBucketItemTitle(
+      matched?.title ||
+        (typeof paramBucketTitle === "string" ? paramBucketTitle : ""),
+    );
+    setLastAppliedParamKey(paramKey);
+  }, [
+    params.conciergeOpen,
+    params.bucketItemId,
+    params.bucketItemTitle,
+    bucketListItems,
+    userId,
+    lastAppliedParamKey,
+  ]);
 
   const callConcierge = async () => {
     if (!userId) return;
