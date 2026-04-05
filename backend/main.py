@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import onboard, bucket_list, buckets, users
+from routers import onboard, bucket_list, buckets, users, concierge
 
 app = FastAPI(
     title="Bucket App API",
@@ -12,6 +12,7 @@ app.include_router(onboard.router)
 app.include_router(users.router)
 app.include_router(bucket_list.router)
 app.include_router(buckets.router)
+app.include_router(concierge.router)
 
 @app.get("/")
 def read_root():

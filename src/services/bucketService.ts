@@ -18,4 +18,18 @@ export const bucketService = {
     const data = await handleApiError(response);
     return data.goals;
   },
+
+  async planBucketWithAgent(userId: string, requestText: string) {
+    const response = await fetch(`${API_BASE_URL}/concierge/plan-bucket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: userId,
+        request_text: requestText,
+      }),
+    });
+
+    const data = await handleApiError(response);
+    return data.data; // This returns the perfectly formatted PlannedBucketCard!
+  },
 };
