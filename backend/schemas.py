@@ -42,6 +42,7 @@ class OnboardRequest(BaseModel):
 
 class BucketCreate(BaseModel):
     creator_id: str
+    bucket_list_item_id: Optional[str] = None
     title: str
     category: str
     event_time: str
@@ -51,6 +52,7 @@ class BucketCreate(BaseModel):
 
 class BucketUpdate(BaseModel):
     actor_id: str
+    bucket_list_item_id: Optional[str] = None
     title: Optional[str] = None
     category: Optional[str] = None
     event_time: Optional[str] = None
@@ -91,6 +93,12 @@ class PlanBucketFromListRequest(BaseModel):
 
 class BucketJoinRequest(BaseModel):
     actor_id: str
+
+
+class BucketCloneRequest(BaseModel):
+    actor_id: str
+    event_time: str
+    visibility: str = "private"
 
 
 class BucketCommentCreate(BaseModel):

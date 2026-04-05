@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from database import supabase
-from schemas import BucketCreate, BucketJoinRequest, BucketStatusUpdate, BucketUpdate
+from services.category_badge_service import normalize_bucket_category, recalculate_user_badges
+from schemas import BucketCloneRequest, BucketCreate, BucketJoinRequest, BucketStatusUpdate, BucketUpdate
 
 router = APIRouter(prefix="/api/buckets", tags=["Buckets"])
 
@@ -260,10 +261,24 @@ async def get_bucket(bucket_id: str):
 @router.post("/")
 async def create_bucket(bucket: BucketCreate):
     try:
+        normalized_category = normalize_bucket_category(bucket.category)
+
+        if bucket.bucket_list_item_id:
+            bucket_item_response = (
+                supabase.table("bucket_list_items")
+                .select("id")
+                .eq("id", bucket.bucket_list_item_id)
+                .eq("user_id", bucket.creator_id)
+                .execute()
+            )
+            if not bucket_item_response.data:
+                raise HTTPException(status_code=404, detail="Bucket list item not found for this user")
+
         response = supabase.table("buckets").insert({
             "creator_id": bucket.creator_id,
+            "bucket_list_item_id": bucket.bucket_list_item_id,
             "title": bucket.title,
-            "category": bucket.category,
+            "category": normalized_category,
             "event_time": bucket.event_time,
             "status": bucket.status,
             "visibility": bucket.visibility,
@@ -281,6 +296,9 @@ async def create_bucket(bucket: BucketCreate):
             raise
 
         refreshed_bucket = _get_bucket_row(created_bucket["id"])
+        if refreshed_bucket.get("status") == "completed":
+            recalculate_user_badges(bucket.creator_id)
+
         return {"status": "success", "data": _build_bucket_details(refreshed_bucket)}
     except HTTPException:
         raise
@@ -294,7 +312,24 @@ async def update_bucket(bucket_id: str, update: BucketUpdate):
         update_data = update.model_dump(exclude_none=True, exclude={"actor_id"})
         if not update_data:
             raise HTTPException(status_code=400, detail="No bucket fields provided to update")
+
+        if "category" in update_data:
+            update_data["category"] = normalize_bucket_category(update_data["category"])
+
+        if "bucket_list_item_id" in update_data and update_data["bucket_list_item_id"]:
+            bucket_item_response = (
+                supabase.table("bucket_list_items")
+                .select("id")
+                .eq("id", update_data["bucket_list_item_id"])
+                .eq("user_id", update.actor_id)
+                .execute()
+            )
+            if not bucket_item_response.data:
+                raise HTTPException(status_code=404, detail="Bucket list item not found for this user")
+
         response = supabase.table("buckets").update(update_data).eq("id", bucket_id).execute()
+        if "category" in update_data:
+            recalculate_user_badges(update.actor_id)
         return {"status": "success", "data": response.data}
     except HTTPException:
         raise
@@ -305,8 +340,12 @@ async def update_bucket(bucket_id: str, update: BucketUpdate):
 async def update_bucket_status(bucket_id: str, update: BucketStatusUpdate):
     """Moves a bucket from Planned -> Active -> Completed."""
     try:
-        _require_bucket_creator(bucket_id, update.actor_id)
+        bucket = _require_bucket_creator(bucket_id, update.actor_id)
         response = supabase.table("buckets").update({"status": update.status}).eq("id", bucket_id).execute()
+
+        if update.status == "completed" or bucket.get("status") == "completed":
+            recalculate_user_badges(update.actor_id)
+
         return {"status": "success", "data": response.data}
     except HTTPException:
         raise
@@ -316,8 +355,12 @@ async def update_bucket_status(bucket_id: str, update: BucketStatusUpdate):
 @router.delete("/{bucket_id}")
 async def delete_bucket(bucket_id: str, actor_id: str):
     try:
-        _require_bucket_creator(bucket_id, actor_id)
+        existing_bucket = _require_bucket_creator(bucket_id, actor_id)
         supabase.table("buckets").delete().eq("id", bucket_id).execute()
+
+        if existing_bucket.get("status") == "completed":
+            recalculate_user_badges(actor_id)
+
         return {"status": "success", "message": "Bucket deleted"}
     except HTTPException:
         raise
@@ -339,6 +382,53 @@ async def join_bucket(bucket_id: str, payload: BucketJoinRequest):
         return {
             "status": "success",
             "message": "Joined bucket successfully",
+            "data": _build_bucket_details(refreshed_bucket),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{bucket_id}/clone")
+async def clone_bucket(bucket_id: str, payload: BucketCloneRequest):
+    """Clone an existing bucket into a new planned bucket for the requesting user."""
+    try:
+        source_bucket = _get_bucket_row(bucket_id)
+
+        if source_bucket.get("status") != "completed":
+            raise HTTPException(status_code=400, detail="Only completed buckets can be cloned")
+
+        if source_bucket.get("visibility") == "private":
+            raise HTTPException(status_code=403, detail="Private buckets cannot be cloned")
+
+        normalized_category = normalize_bucket_category(source_bucket.get("category") or "")
+
+        insert_response = supabase.table("buckets").insert({
+            "creator_id": payload.actor_id,
+            "bucket_list_item_id": source_bucket.get("bucket_list_item_id"),
+            "title": source_bucket.get("title"),
+            "category": normalized_category,
+            "event_time": payload.event_time,
+            "status": "planned",
+            "visibility": payload.visibility,
+        }).execute()
+
+        if not insert_response.data:
+            raise HTTPException(status_code=500, detail="Bucket clone failed")
+
+        cloned_bucket = insert_response.data[0]
+
+        try:
+            _ensure_bucket_membership(cloned_bucket["id"], payload.actor_id, role="creator")
+        except Exception:
+            supabase.table("buckets").delete().eq("id", cloned_bucket["id"]).execute()
+            raise
+
+        refreshed_bucket = _get_bucket_row(cloned_bucket["id"])
+        return {
+            "status": "success",
+            "message": "Bucket cloned successfully",
             "data": _build_bucket_details(refreshed_bucket),
         }
     except HTTPException:
@@ -375,6 +465,24 @@ async def remove_bucket_member(bucket_id: str, member_user_id: str, actor_id: st
         refreshed_bucket = supabase.table("buckets").select("*").eq("id", bucket_id).execute()
         bucket_details = _build_bucket_details(refreshed_bucket.data[0])
         return {"status": "success", "message": "Bucket member removed", "data": bucket_details}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/list-item/{bucket_list_item_id}")
+async def get_buckets_for_list_item(bucket_list_item_id: str):
+    try:
+        response = (
+            supabase.table("buckets")
+            .select("*")
+            .eq("bucket_list_item_id", bucket_list_item_id)
+            .order("event_time")
+            .execute()
+        )
+        buckets = [_build_bucket_details(bucket) for bucket in (response.data or [])]
+        return {"status": "success", "data": buckets}
     except HTTPException:
         raise
     except Exception as e:

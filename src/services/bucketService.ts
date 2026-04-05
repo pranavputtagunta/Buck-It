@@ -34,9 +34,7 @@ export const bucketService = {
   },
 
   async getDiscoverFeed(userId: string) {
-    const response = await fetch(
-      `${API_BASE_URL}/buckets/feed/discover/${userId}`,
-    );
+    const response = await fetch(`${API_BASE_URL}/buckets/discover/${userId}`);
     const data = await handleApiError(response);
     return data.data; // Returns the array of 5 Discover items
   },
